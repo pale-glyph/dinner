@@ -470,7 +470,7 @@ These are starting targets and should be validated with real usage:
 - Next.js application shell and local household/profile context.
 - Docker Compose PostgreSQL development environment.
 - Household service.
-- CI pipeline, migrations, health checks, logging, and tracing baseline.
+- Migrations, health checks, logging, and tracing baseline.
 
 ### Phase 2 — Pantry
 

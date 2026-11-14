@@ -254,12 +254,12 @@ flowchart TD
 
 ### M0 — Buildable skeleton
 
-- [ ] Create C# solution and service project templates.
-- [ ] Create Next.js application shell.
-- [ ] Verify Docker Compose PostgreSQL workflow.
-- [ ] Add shared configuration and environment conventions.
-- [ ] Add health endpoints and basic CI build.
-- [ ] Define API, event, and MCP naming conventions.
+- [x] Create C# solution and service project templates.
+- [x] Create Next.js application shell.
+- [x] Verify Docker Compose PostgreSQL workflow.
+- [x] Add shared configuration and environment conventions.
+- [x] Add health endpoints.
+- [x] Define API, event, and MCP naming conventions.
 
 ### M1 — Pantry usable
 

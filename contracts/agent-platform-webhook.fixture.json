@@ -1,0 +1,12 @@
+{
+  "eventType": "AgentRunProgressed.v1",
+  "eventId": "a9a7c0a8-5f39-4657-87b2-4c4ddf82f0af",
+  "occurredAt": "2026-11-14T00:00:00Z",
+  "householdId": "914e7702-6d87-44ff-aecb-c2dd9b6b684a",
+  "correlationId": "526e9596-6f20-4e5d-82ee-31963856451d",
+  "data": {
+    "runId": "28875b16-26f1-4e3f-87fe-2e3ef91f2ddd",
+    "status": "in_progress",
+    "message": "Gathering household context"
+  }
+}
