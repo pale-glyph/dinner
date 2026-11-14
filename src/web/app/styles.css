@@ -6,8 +6,10 @@ h1 { font-size: clamp(2.5rem, 8vw, 5rem); margin: .25rem 0; }
 .intro { font-size: 1.25rem; line-height: 1.6; }
 nav { display: flex; flex-wrap: wrap; gap: .75rem; margin: 2rem 0; }
 a { border: 1px solid #d7c4b4; border-radius: 999px; color: inherit; padding: .6rem 1rem; text-decoration: none; }
+a.active { background: #7d4a2d; border-color: #7d4a2d; color: white; }
 a[aria-disabled="true"] { opacity: .5; }
 section { background: #fff; border-radius: 1rem; padding: 1.5rem; }
+.recipe-list { margin-top: 2rem; }
 .pantry-grid { display: grid; gap: 2rem; grid-template-columns: minmax(250px, .8fr) minmax(0, 1.2fr); }
 h2 { margin-top: 0; }
 form, label { display: grid; gap: .4rem; } form { gap: 1rem; } input, select, button { border: 1px solid #d7c4b4; border-radius: .5rem; font: inherit; padding: .65rem; } label span, small, .muted { color: #73685f; font-size: .85rem; } button { background: #7d4a2d; border-color: #7d4a2d; color: white; cursor: pointer; } .form-row, .section-heading, .items li, .actions { display: flex; gap: .75rem; } .form-row label { flex: 1; } .section-heading { align-items: center; justify-content: space-between; } .items { list-style: none; margin: 0; padding: 0; } .items li { align-items: center; border-top: 1px solid #eee2d8; justify-content: space-between; padding: 1rem 0; } .items small { display: block; margin-top: .3rem; } .actions { flex-wrap: wrap; justify-content: end; } button.quiet { background: transparent; border-color: #d7c4b4; color: #62412c; padding: .4rem .6rem; } button.danger { background: transparent; border-color: transparent; color: #9e3026; padding: .4rem; } .status { color: #9e3026; } @media (max-width: 700px) { main { padding: 2rem 1rem; } .pantry-grid { grid-template-columns: 1fr; } .items li { align-items: start; flex-direction: column; } .actions { justify-content: start; } }
