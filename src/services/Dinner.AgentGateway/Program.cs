@@ -34,14 +34,24 @@ app.MapPost("/api/v1/agent/runs", async (StartRun input, IHttpClientFactory clie
     try
     {
         using var response = await clients.CreateClient("agent-platform").PostAsJsonAsync($"{platformUri.AbsoluteUri.TrimEnd('/')}/api/projects/{projectId}/agents/{agentId}/threads", new { initialPrompt = input.Prompt });
-        if (!response.IsSuccessStatusCode) { runs[run.Id] = run with { Status = "Failed", Events = [$"Platform rejected thread creation ({(int)response.StatusCode})."] }; return Results.StatusCode(502); }
+        if (!response.IsSuccessStatusCode)
+        {
+            runs[run.Id] = run with { Status = "Failed", Events = [$"The agent platform rejected thread creation ({(int)response.StatusCode})."] };
+            await SaveRun(db, runs[run.Id]);
+            return Results.Json(runs[run.Id], statusCode: StatusCodes.Status502BadGateway);
+        }
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var threadId = document.RootElement.GetProperty("id").GetGuid();
         runs[run.Id] = run with { Status = "Running", ThreadId = threadId };
         await SaveRun(db, runs[run.Id]);
         return Results.Accepted($"/api/v1/agent/runs/{run.Id}", runs[run.Id]);
     }
-    catch (HttpRequestException) { runs[run.Id] = run with { Status = "Failed", Events = ["The configured agent platform could not be reached."] }; await SaveRun(db, runs[run.Id]); return Results.StatusCode(502); }
+    catch (HttpRequestException)
+    {
+        runs[run.Id] = run with { Status = "Failed", Events = ["The configured agent platform could not be reached. Check AGENT_PLATFORM_BASE_URL and that the platform is reachable from the agent-gateway container."] };
+        await SaveRun(db, runs[run.Id]);
+        return Results.Json(runs[run.Id], statusCode: StatusCodes.Status502BadGateway);
+    }
 }).WithTags("Agent runs");
 app.MapGet("/api/v1/agent/runs/{id:guid}", async (Guid id, NpgsqlDataSource db) => runs.TryGetValue(id, out var run) ? Results.Ok(run) : await ReadRun(db, id) is { } stored ? Results.Ok(stored) : Results.NotFound());
 app.MapPost("/api/v1/agent/runs/{id:guid}/messages", async (Guid id, RunMessage input, IHttpClientFactory clients, NpgsqlDataSource db) =>
@@ -94,7 +104,16 @@ static bool ValidSignature(byte[] body, string secret, string signature)
     try { return CryptographicOperations.FixedTimeEquals(expected, Convert.FromHexString(signature[prefix.Length..])); } catch (FormatException) { return false; }
 }
 static bool PlatformUri(string? value, out Uri uri) => Uri.TryCreate(value, UriKind.Absolute, out uri!) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
-static AgentRun Advance(AgentRun run, JsonElement entry) { var sequence = entry.TryGetProperty("sequenceNumber", out var sequenceNode) ? sequenceNode.GetInt32() : 0; if (sequence <= run.LastSequence) return run; var status = entry.TryGetProperty("role", out var role) && role.GetString() == "Agent" ? "ProposalReady" : run.Status; var content = entry.TryGetProperty("content", out var contentNode) ? contentNode.GetString() : null; return run with { LastSequence = sequence, Status = status, HasPendingQueuedMessage = false, Events = content is null ? run.Events : [.. run.Events, content] }; }
+static AgentRun Advance(AgentRun run, JsonElement entry)
+{
+    var sequence = entry.TryGetProperty("sequenceNumber", out var sequenceNode) && sequenceNode.ValueKind == JsonValueKind.Number ? sequenceNode.GetInt32() : 0;
+    if (sequence <= run.LastSequence) return run;
+    var status = entry.TryGetProperty("role", out var role) && role.ValueKind == JsonValueKind.String && role.GetString() == "Agent" ? "ProposalReady" : run.Status;
+    var content = entry.TryGetProperty("content", out var contentNode) && contentNode.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined
+        ? contentNode.ValueKind == JsonValueKind.String ? contentNode.GetString() : contentNode.GetRawText()
+        : null;
+    return run with { LastSequence = sequence, Status = status, HasPendingQueuedMessage = false, Events = content is null ? run.Events : [.. run.Events, content] };
+}
 static async Task Migrate(NpgsqlDataSource db) { await using var c = db.CreateCommand("CREATE TABLE IF NOT EXISTS agent_runs (id uuid PRIMARY KEY, household_id uuid NOT NULL, status text NOT NULL, thread_id uuid NULL, last_sequence int NOT NULL, events jsonb NOT NULL, created_at timestamptz NOT NULL, correlation_id text NOT NULL, pending_queued bool NOT NULL); CREATE TABLE IF NOT EXISTS agent_webhook_events (event_id text PRIMARY KEY, payload text NOT NULL, received_at timestamptz NOT NULL DEFAULT now());"); await c.ExecuteNonQueryAsync(); }
 static async Task SaveRun(NpgsqlDataSource db, AgentRun run) { await using var c = db.CreateCommand("INSERT INTO agent_runs (id,household_id,status,thread_id,last_sequence,events,created_at,correlation_id,pending_queued) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status,thread_id=EXCLUDED.thread_id,last_sequence=EXCLUDED.last_sequence,events=EXCLUDED.events,pending_queued=EXCLUDED.pending_queued"); c.Parameters.AddWithValue(run.Id); c.Parameters.AddWithValue(run.HouseholdId); c.Parameters.AddWithValue(run.Status); c.Parameters.AddWithValue((object?)run.ThreadId ?? DBNull.Value); c.Parameters.AddWithValue(run.LastSequence); c.Parameters.AddWithValue(JsonSerializer.Serialize(run.Events)); c.Parameters.AddWithValue(run.CreatedAt); c.Parameters.AddWithValue(run.CorrelationId); c.Parameters.AddWithValue(run.HasPendingQueuedMessage); await c.ExecuteNonQueryAsync(); }
 static async Task<bool> SaveWebhook(NpgsqlDataSource db, string eventId, string payload) { await using var c = db.CreateCommand("INSERT INTO agent_webhook_events (event_id,payload) VALUES ($1,$2) ON CONFLICT DO NOTHING"); c.Parameters.AddWithValue(eventId); c.Parameters.AddWithValue(payload); return await c.ExecuteNonQueryAsync() == 1; }

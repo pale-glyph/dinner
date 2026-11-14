@@ -17,6 +17,7 @@ app.MapGet("/mcp/resources/nutrition/products", () => Results.Ok(new { uri = "nu
 app.MapPost("/mcp/tools/find_nutrition_product", (NutritionSearch input) => Results.Ok(new { structuredContent = products.Where(p => p.Name.Contains(input.Query ?? "", StringComparison.OrdinalIgnoreCase) || p.Barcode == input.Query).ToArray(), notice = "Nutrition data is a fixture and is not medical advice." }));
 app.MapPost("/mcp/tools/get_nutrition_product", (NutritionLookup input) => products.FirstOrDefault(p => p.Id == input.ProductId) is { } product ? Results.Ok(new { structuredContent = product, notice = "Values are per serving basis and may be incomplete." }) : Results.NotFound());
 app.MapGet("/mcp/capabilities", () => Results.Ok(new { version = "v1", resources = new[] { "nutrition://products" }, tools = new[] { "find_nutrition_product", "get_nutrition_product" } }));
+app.MapMcpHttpServer(new("nutrition-data-service", ["find_nutrition_product", "get_nutrition_product"], ["nutrition://products"]));
 app.Run();
 
 record NutritionProduct(string Id, string Name, string Barcode, decimal ServingQuantity, string ServingUnit, Nutrients Nutrients, Provenance Provenance);

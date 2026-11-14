@@ -35,7 +35,22 @@ export default function Home() {
   const loadRecipes = async () => { const response = await fetch(`${recipeApi}/api/v1/recipes?householdId=${householdId}`); if (response.ok) setRecipes(await response.json()); };
   const loadProposals = async () => { const response = await fetch(`${recipeApi}/api/v1/recipes/proposals?householdId=${householdId}`); if (response.ok) setPendingProposals(await response.json()); };
   useEffect(() => { load(); loadRecipes().catch(() => setStatus("Recipe service is unavailable.")); loadProposals().catch(() => undefined); }, []);
-  const chat = async (event: FormEvent) => { event.preventDefault(); setStatus("Starting agent conversation…"); const response = await fetch(`${agentApi}/api/v1/agent/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ householdId, prompt }) }); if (!response.ok) { setStatus("Could not start the agent conversation."); return; } const next = await response.json(); setRun(next); setStatus(next.status === "AwaitingPlatformConfiguration" ? "Agent Platform is not configured yet; the recipe editor remains available." : "Agent is working. Refresh the run to see new messages."); };
+  const chat = async (event: FormEvent) => {
+    event.preventDefault();
+    setStatus("Starting agent conversation…");
+    try {
+      const response = await fetch(`${agentApi}/api/v1/agent/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ householdId, prompt }) });
+      const next = await response.json().catch(() => null);
+      if (next?.id) setRun(next);
+      if (!response.ok) {
+        setStatus(next?.events?.at(-1) ?? `Could not start the agent conversation (HTTP ${response.status}).`);
+        return;
+      }
+      setStatus(next.status === "AwaitingPlatformConfiguration" ? "Agent Platform is not configured yet; the recipe editor remains available." : "Agent is working. Refresh the run to see new messages.");
+    } catch {
+      setStatus("The Agent Gateway is unavailable. Start the local stack and try again.");
+    }
+  };
   const refreshRun = async () => { if (!run) return; await fetch(`${agentApi}/api/v1/agent/runs/${run.id}/reconcile`, { method: "POST" }); const response = await fetch(`${agentApi}/api/v1/agent/runs/${run.id}`); if (response.ok) setRun(await response.json()); await loadProposals(); };
   const toInput = () => ({ householdId, title: recipeTitle, instructions, totalMinutes: 30, servings: 2, tags: ["dinner"], ingredients: ingredients.split("\n").filter(Boolean).map(line => { const [name, quantity, unit] = line.split("|"); return { name: name?.trim(), quantity: Number(quantity), unit: unit?.trim() }; }) });
   const propose = async (event: FormEvent) => { event.preventDefault(); const input = toInput(); const endpoint = editing ? "propose_recipe_update" : "propose_recipe_create"; const body = editing ? { recipeId: editing.id, expectedRevision: editing.revision, recipe: input } : input; const response = await fetch(`${recipeApi}/mcp/tools/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) { setStatus("The recipe draft needs a title, instructions, servings, and valid ingredients."); return; } const result = await response.json(); setProposal(result.structuredContent); setStatus("Recipe proposal ready for your approval."); };
