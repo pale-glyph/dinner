@@ -80,7 +80,19 @@ public static class DinnerServiceDefaults
                 }
 
                 if (method == "tools/list")
-                    return RpcResult(id, new { tools = definition.Tools.Select(name => new { name, description = $"Dinner {definition.Name} capability: {name}.", inputSchema = new { type = "object", additionalProperties = true } }) });
+                    return RpcResult(id, new
+                    {
+                        tools = definition.Tools.Select(name =>
+                        {
+                            var detail = definition.ToolDefinitions?.GetValueOrDefault(name);
+                            return new
+                            {
+                                name,
+                                description = detail?.Description ?? $"Dinner {definition.Name} capability: {name}.",
+                                inputSchema = detail?.InputSchema ?? new { type = "object", additionalProperties = true }
+                            };
+                        })
+                    });
 
                 if (method == "resources/list")
                     return RpcResult(id, new { resources = definition.Resources.Select(uri => new { uri, name = uri, mimeType = "application/json" }) });
@@ -113,4 +125,5 @@ public static class DinnerServiceDefaults
     private static IResult RpcError(JsonElement? id, int code, string message) => Results.Json(new { jsonrpc = "2.0", id = id ?? default(JsonElement), error = new { code, message } });
 }
 
-public sealed record McpServerDefinition(string Name, string[] Tools, string[] Resources);
+public sealed record McpServerDefinition(string Name, string[] Tools, string[] Resources, IReadOnlyDictionary<string, McpToolDefinition>? ToolDefinitions = null);
+public sealed record McpToolDefinition(string Description, object InputSchema);

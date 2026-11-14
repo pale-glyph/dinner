@@ -27,8 +27,53 @@ app.MapPost("/mcp/tools/propose_recipe_update", async (RecipeProposalInput input
 app.MapPost("/mcp/tools/propose_recipe_delete", async (RecipeDeleteProposal input, NpgsqlDataSource db) => await Propose(db, "delete", input.RecipeId, null, input.HouseholdId, input.ExpectedRevision));
 app.MapPost("/mcp/tools/apply_approved_recipe_proposal", async (ApplyProposal input, NpgsqlDataSource db) => await Apply(db, input));
 app.MapGet("/mcp/capabilities", () => Results.Ok(new { version = "v1", resources = new[] { "recipes://catalog", "recipes://recipe/{recipeId}" }, tools = new[] { "find_recipes", "get_recipe", "propose_recipe_create", "propose_recipe_update", "propose_recipe_delete", "apply_approved_recipe_proposal" } }));
-app.MapMcpHttpServer(new("recipe-service", ["find_recipes", "get_recipe", "propose_recipe_create", "propose_recipe_update", "propose_recipe_delete", "apply_approved_recipe_proposal"], ["recipes://catalog", "recipes://recipe/{recipeId}"]));
+app.MapMcpHttpServer(new("recipe-service", ["find_recipes", "get_recipe", "propose_recipe_create", "propose_recipe_update", "propose_recipe_delete", "apply_approved_recipe_proposal"], ["recipes://catalog", "recipes://recipe/{recipeId}"], RecipeToolDefinitions()));
 app.Run();
+
+static IReadOnlyDictionary<string, McpToolDefinition> RecipeToolDefinitions()
+{
+    var identifier = new { type = "string", format = "uuid" };
+    var ingredient = new
+    {
+        type = "object",
+        additionalProperties = false,
+        properties = new
+        {
+            name = new { type = "string", description = "Ingredient name." },
+            quantity = new { type = "number", exclusiveMinimum = 0 },
+            unit = new { type = "string", description = "Measurement unit, for example g, ml, or item." },
+            nutritionProductId = new { type = "string", description = "Optional nutrition product ID." },
+            unresolved = new { type = "boolean", description = "True when no nutrition product has been matched." }
+        },
+        required = new[] { "name", "quantity", "unit" }
+    };
+    var recipe = new
+    {
+        type = "object",
+        additionalProperties = false,
+        properties = new
+        {
+            householdId = identifier,
+            title = new { type = "string" },
+            description = new { type = "string" },
+            instructions = new { type = "string", description = "Ordered cooking instructions." },
+            totalMinutes = new { type = "integer", minimum = 0 },
+            servings = new { type = "integer", minimum = 1 },
+            tags = new { type = "array", items = new { type = "string" } },
+            ingredients = new { type = "array", minItems = 1, items = ingredient }
+        },
+        required = new[] { "householdId", "title", "instructions", "totalMinutes", "servings", "ingredients" }
+    };
+    return new Dictionary<string, McpToolDefinition>
+    {
+        ["find_recipes"] = new("Find recipes in a household, optionally by ingredient.", new { type = "object", additionalProperties = false, properties = new { householdId = identifier, ingredient = new { type = "string" } }, required = new[] { "householdId" } }),
+        ["get_recipe"] = new("Read one recipe owned by a household.", new { type = "object", additionalProperties = false, properties = new { householdId = identifier, recipeId = identifier }, required = new[] { "householdId", "recipeId" } }),
+        ["propose_recipe_create"] = new("Create a recipe proposal. It must be explicitly approved with apply_approved_recipe_proposal before saving.", recipe),
+        ["propose_recipe_update"] = new("Propose an update to the current recipe revision. Approval is required before saving.", new { type = "object", additionalProperties = false, properties = new { recipeId = identifier, expectedRevision = new { type = "integer", minimum = 1 }, recipe }, required = new[] { "recipeId", "expectedRevision", "recipe" } }),
+        ["propose_recipe_delete"] = new("Propose deleting a recipe. Approval is required before deletion.", new { type = "object", additionalProperties = false, properties = new { householdId = identifier, recipeId = identifier, expectedRevision = new { type = "integer", minimum = 1 } }, required = new[] { "householdId", "recipeId", "expectedRevision" } }),
+        ["apply_approved_recipe_proposal"] = new("Apply a pending recipe proposal after explicit user approval.", new { type = "object", additionalProperties = false, properties = new { proposalId = identifier, approvalReference = new { type = "string", minLength = 1 }, idempotencyKey = new { type = "string", minLength = 1 } }, required = new[] { "proposalId", "approvalReference", "idempotencyKey" } })
+    };
+}
 
 static Dictionary<string, string[]> Validate(RecipeInput input) { var e = new Dictionary<string, string[]>(); if (input.HouseholdId == Guid.Empty) e["householdId"] = ["A household is required."]; if (string.IsNullOrWhiteSpace(input.Title)) e["title"] = ["A title is required."]; if (input.Servings <= 0) e["servings"] = ["Servings must be positive."]; if (string.IsNullOrWhiteSpace(input.Instructions)) e["instructions"] = ["Instructions are required."]; if (input.Ingredients is null || input.Ingredients.Length == 0 || input.Ingredients.Any(i => string.IsNullOrWhiteSpace(i.Name) || i.Quantity <= 0 || string.IsNullOrWhiteSpace(i.Unit))) e["ingredients"] = ["Every ingredient requires a name, positive quantity, and unit."]; return e; }
 static async Task<IResult> Propose(NpgsqlDataSource db, string kind, Guid? recipeId, RecipeInput? recipe, Guid? householdId = null, int? expectedRevision = null) { var id = householdId ?? recipe?.HouseholdId ?? Guid.Empty; if (kind != "delete") { var errors = Validate(recipe!); if (errors.Count > 0) return Results.ValidationProblem(errors); } var proposal = new Proposal(Guid.NewGuid(), id, kind, recipeId, expectedRevision, recipe, "Pending", DateTimeOffset.UtcNow); await using var c = db.CreateCommand("INSERT INTO recipe_proposals (id,household_id,kind,recipe_id,expected_revision,payload,status,created_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)"); c.Parameters.AddWithValue(proposal.Id); c.Parameters.AddWithValue(proposal.HouseholdId); c.Parameters.AddWithValue(proposal.Kind); c.Parameters.AddWithValue((object?)proposal.RecipeId ?? DBNull.Value); c.Parameters.AddWithValue((object?)proposal.ExpectedRevision ?? DBNull.Value); c.Parameters.AddWithValue(JsonSerializer.Serialize(proposal.Recipe)); c.Parameters.AddWithValue(proposal.Status); c.Parameters.AddWithValue(proposal.CreatedAt); await c.ExecuteNonQueryAsync(); return Results.Ok(new { structuredContent = proposal, requiresApproval = true }); }
