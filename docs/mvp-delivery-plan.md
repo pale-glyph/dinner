@@ -275,14 +275,14 @@ flowchart TD
 
 ### M2 — Agent recipe chat usable
 
-- [ ] Implement household-scoped recipe persistence, CRUD, revisions, and source attribution.
-- [ ] Implement structured recipe-draft validation for ingredients, servings, instructions, tags, and unresolved ingredients.
-- [ ] Implement nutrition import fixture, local product lookup, normalisation, provenance, and recipe links.
-- [ ] Implement Agent Gateway conversation/thread lifecycle against the platform timeline API.
-- [ ] Implement signed webhook storage, deduplication, and timeline reconciliation.
-- [ ] Add recipe MCP resources and typed read/draft/create/update/delete proposal tools.
-- [ ] Add read-only nutrition MCP tools.
-- [ ] Build assistant chat, draft review, recipe editor, and explicit deletion confirmation UI.
+- [x] Implement household-scoped recipe persistence, CRUD, revisions, and source attribution.
+- [x] Implement structured recipe-draft validation for ingredients, servings, instructions, tags, and unresolved ingredients.
+- [x] Implement nutrition import fixture, local product lookup, normalisation, provenance, and recipe links.
+- [x] Implement Agent Gateway conversation/thread lifecycle against the platform timeline API.
+- [x] Implement signed webhook storage, deduplication, and timeline reconciliation.
+- [x] Add recipe MCP resources and typed read/draft/create/update/delete proposal tools.
+- [x] Add read-only nutrition MCP tools.
+- [x] Build assistant chat, draft review, recipe editor, and explicit deletion confirmation UI.
 - [ ] Add an end-to-end test: pantry context → chat-generated recipe → approve → edit → delete.
 
 ### M3 — Meal planning and shopping loop usable
