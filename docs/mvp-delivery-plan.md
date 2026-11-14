@@ -274,17 +274,17 @@ flowchart TD
 
 ### M2 — Agent meal planning usable
 
-- [ ] Implement recipe catalogue and search.
-- [ ] Implement nutrition import fixture and local product lookup.
-- [ ] Add nutrient normalisation and provenance fields.
-- [ ] Link recipe ingredients to nutrition references where available.
-- [ ] Implement meal-plan draft and version model.
-- [ ] Implement constraint validation.
-- [ ] Implement Agent Gateway run state machine.
-- [ ] Implement HTTP request and webhook fixtures.
-- [ ] Add recipe and meal-plan MCP tools.
-- [ ] Add read-only nutrition MCP tools.
-- [ ] Build meal-plan review and approval UI.
+- [x] Implement recipe catalogue and search.
+- [x] Implement nutrition import fixture and local product lookup.
+- [x] Add nutrient normalisation and provenance fields.
+- [x] Link recipe ingredients to nutrition references where available.
+- [x] Implement meal-plan draft and version model.
+- [x] Implement constraint validation.
+- [x] Implement Agent Gateway run state machine.
+- [x] Implement HTTP request and webhook fixtures.
+- [x] Add recipe and meal-plan MCP tools.
+- [x] Add read-only nutrition MCP tools.
+- [x] Build meal-plan review and approval UI.
 
 ### M3 — Shopping loop usable
 
