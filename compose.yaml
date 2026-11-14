@@ -43,9 +43,13 @@ services:
       dockerfile: src/services/Dinner.HouseholdService/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__Dinner: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
     ports:
       - "${HOUSEHOLD_SERVICE_PORT:-18082}:8080"
     healthcheck: *service_healthcheck
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - dinner
 
@@ -55,9 +59,13 @@ services:
       dockerfile: src/services/Dinner.PantryService/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__Dinner: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
     ports:
       - "${PANTRY_SERVICE_PORT:-18083}:8080"
     healthcheck: *service_healthcheck
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - dinner
 
