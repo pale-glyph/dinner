@@ -1,0 +1,11 @@
+{
+  "version": "v1",
+  "services": {
+    "household-service": { "resources": ["household://context", "household://preferences", "household://dietary-constraints"], "tools": ["get_household_context", "get_household_preferences", "update_household_preferences"] },
+    "pantry-service": { "resources": ["pantry://items", "pantry://expiring", "pantry://low-stock"], "tools": ["search_pantry", "get_pantry_item", "propose_pantry_adjustments", "apply_pantry_adjustments"] },
+    "recipe-service": { "resources": ["recipes://catalog"], "tools": ["find_recipes", "get_recipe", "scale_recipe"] },
+    "nutrition-data-service": { "resources": ["nutrition://products"], "tools": ["find_nutrition_product", "get_nutrition_product"] },
+    "meal-planning-service": { "resources": ["meal-plans://current"], "tools": ["get_meal_plan", "propose_meal_plan", "commit_meal_plan"] },
+    "shopping-list-service": { "resources": ["shopping://active-list"], "tools": ["get_shopping_list", "propose_shopping_list", "update_shopping_item"] }
+  }
+}

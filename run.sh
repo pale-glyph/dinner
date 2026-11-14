@@ -23,5 +23,5 @@ fi
 echo "Building and starting the dinner stack..."
 docker compose --env-file .env up --build --detach
 
-echo "PostgreSQL container status:"
+echo "Dinner container status:"
 docker compose --env-file .env ps

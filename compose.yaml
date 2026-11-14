@@ -20,6 +20,115 @@ services:
     networks:
       - dinner
 
+  agent-gateway:
+    build:
+      context: .
+      dockerfile: src/services/Dinner.AgentGateway/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+    ports:
+      - "${AGENT_GATEWAY_PORT:-18081}:8080"
+    healthcheck: &service_healthcheck
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dinner
+
+  household-service:
+    build:
+      context: .
+      dockerfile: src/services/Dinner.HouseholdService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+    ports:
+      - "${HOUSEHOLD_SERVICE_PORT:-18082}:8080"
+    healthcheck: *service_healthcheck
+    networks:
+      - dinner
+
+  pantry-service:
+    build:
+      context: .
+      dockerfile: src/services/Dinner.PantryService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+    ports:
+      - "${PANTRY_SERVICE_PORT:-18083}:8080"
+    healthcheck: *service_healthcheck
+    networks:
+      - dinner
+
+  recipe-service:
+    build:
+      context: .
+      dockerfile: src/services/Dinner.RecipeService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+    ports:
+      - "${RECIPE_SERVICE_PORT:-18084}:8080"
+    healthcheck: *service_healthcheck
+    networks:
+      - dinner
+
+  nutrition-data-service:
+    build:
+      context: .
+      dockerfile: src/services/Dinner.NutritionDataService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+    ports:
+      - "${NUTRITION_DATA_SERVICE_PORT:-18085}:8080"
+    healthcheck: *service_healthcheck
+    networks:
+      - dinner
+
+  meal-planning-service:
+    build:
+      context: .
+      dockerfile: src/services/Dinner.MealPlanningService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+    ports:
+      - "${MEAL_PLANNING_SERVICE_PORT:-18086}:8080"
+    healthcheck: *service_healthcheck
+    networks:
+      - dinner
+
+  shopping-list-service:
+    build:
+      context: .
+      dockerfile: src/services/Dinner.ShoppingListService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+    ports:
+      - "${SHOPPING_LIST_SERVICE_PORT:-18087}:8080"
+    healthcheck: *service_healthcheck
+    networks:
+      - dinner
+
+  web:
+    build:
+      context: .
+      dockerfile: src/web/Dockerfile
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${DINNER_WEB_PORT:-3011}:3000"
+    depends_on:
+      agent-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dinner
+
 volumes:
   postgres_data:
 

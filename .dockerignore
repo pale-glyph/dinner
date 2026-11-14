@@ -1,0 +1,10 @@
+.git
+.agents
+.aws
+.codex
+**/bin
+**/obj
+**/node_modules
+**/.next
+.env
+README.md

@@ -1,5 +1,64 @@
-# dinner
+# Dinner
+
 AI-assisted, low-effort meal planning with recipe management, pantry tracking, nutrition estimates and automated shopping lists.
+
+## Project layout
+
+- `src/services/`: ASP.NET Core service hosts.
+- `src/services/<service>/Dockerfile`: service-specific container build definitions.
+- `src/Dinner.ServiceDefaults/`: shared correlation, error, logging, and health conventions.
+- `src/web/`: Next.js application shell.
+- `contracts/`: initial API, event, MCP, and agent-webhook conventions.
+
+## Prerequisites
+
+- .NET SDK 10.0.403 (pinned in `global.json`)
+- Node.js 24 and npm 11
+- Docker and Docker Compose v2
+
+## Run the skeleton
+
+Start the local stack:
+
+```bash
+./run.sh
+```
+
+This starts PostgreSQL, the seven backend services, and the web shell as separate containers. The web shell is available on `http://localhost:${DINNER_WEB_PORT:-3000}`. Backend health endpoints are exposed on the service ports defined in `.env.example`.
+
+| Component | Local address |
+| --- | --- |
+| Agent Gateway | `http://localhost:18081/health` |
+| Household Service | `http://localhost:18082/health` |
+| Pantry Service | `http://localhost:18083/health` |
+| Recipe Service | `http://localhost:18084/health` |
+| Nutrition Data Service | `http://localhost:18085/health` |
+| Meal Planning Service | `http://localhost:18086/health` |
+| Shopping List Service | `http://localhost:18087/health` |
+
+Build all backend service hosts:
+
+```bash
+for project in src/services/*/*.csproj; do
+  dotnet build "$project"
+done
+```
+
+`Dinner.sln` contains the same projects for IDE use.
+
+Run an individual service (the health endpoint is available at `/health`):
+
+```bash
+dotnet run --project src/services/Dinner.HouseholdService
+```
+
+Start the web shell:
+
+```bash
+cd src/web
+npm install
+npm run dev
+```
 
 ## Local PostgreSQL
 
