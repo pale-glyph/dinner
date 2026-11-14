@@ -263,14 +263,14 @@ flowchart TD
 
 ### M1 — Pantry usable
 
-- [ ] Implement household/profile persistence.
-- [ ] Implement pantry item persistence and migrations.
-- [ ] Implement pantry CRUD and adjustment endpoints.
-- [ ] Add unit normalisation for MVP units.
-- [ ] Add expiry and low-stock queries.
-- [ ] Add pantry MCP resources and tools.
-- [ ] Build pantry UI and seed data.
-- [ ] Add optional pantry-to-food-product linking.
+- [x] Implement household/profile persistence.
+- [x] Implement pantry item persistence and migrations.
+- [x] Implement pantry CRUD and adjustment endpoints.
+- [x] Add unit normalisation for MVP units.
+- [x] Add expiry and low-stock queries.
+- [x] Add pantry MCP resources and tools.
+- [x] Build pantry UI and seed data.
+- [x] Add optional pantry-to-food-product linking.
 
 ### M2 — Agent meal planning usable
 

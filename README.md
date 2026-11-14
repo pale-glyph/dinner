@@ -16,7 +16,7 @@ AI-assisted, low-effort meal planning with recipe management, pantry tracking, n
 - Node.js 24 and npm 11
 - Docker and Docker Compose v2
 
-## Run the skeleton
+## Run locally
 
 Start the local stack:
 
@@ -25,6 +25,8 @@ Start the local stack:
 ```
 
 This starts PostgreSQL, the seven backend services, and the web shell as separate containers. The web shell is available on `http://localhost:${DINNER_WEB_PORT:-3000}`. Backend health endpoints are exposed on the service ports defined in `.env.example`.
+
+The first run applies the household and pantry schema migrations and creates a local sample household with a tinned-tomatoes pantry item. The Pantry screen can add items, consume or restore stock, and remove items. Supported input units are `g`, `kg`, `ml`, `l`, and `item`; quantities are stored as grams, millilitres, or items.
 
 | Component | Local address |
 | --- | --- |
