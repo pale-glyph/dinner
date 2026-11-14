@@ -1,27 +1,97 @@
+using System.Text.Json;
 using Dinner.ServiceDefaults;
+using Npgsql;
+
 var builder = WebApplication.CreateBuilder(args).AddDinnerServiceDefaults();
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+var connection = builder.Configuration.GetConnectionString("Dinner") ?? "Host=localhost;Port=5432;Database=dinner;Username=dinner;Password=change-me";
+builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connection));
 var app = builder.Build().MapDinnerServiceDefaults("recipe-service");
 app.UseCors();
+await Migrate(app.Services.GetRequiredService<NpgsqlDataSource>());
 
-var recipes = new List<Recipe>
-{
-    new("tomato-chickpea-pasta", "Tomato chickpea pasta", "dinner", 30, ["vegetarian", "high-fibre"], [new("Pasta", 250, "g", null), new("Tinned tomatoes", 2, "item", "off-tomatoes"), new("Chickpeas", 1, "item", "off-chickpeas")]),
-    new("vegetable-stir-fry", "Vegetable stir-fry", "dinner", 25, ["vegan", "quick"], [new("Rice", 250, "g", null), new("Mixed vegetables", 500, "g", null), new("Soy sauce", 30, "ml", null)]),
-    new("lentil-soup", "Red lentil soup", "dinner", 40, ["vegan", "batch-friendly"], [new("Red lentils", 250, "g", null), new("Tinned tomatoes", 1, "item", "off-tomatoes"), new("Vegetable stock", 750, "ml", null)]),
-    new("overnight-oats", "Berry overnight oats", "breakfast", 10, ["vegetarian", "quick"], [new("Oats", 160, "g", null), new("Milk", 500, "ml", null), new("Berries", 200, "g", null)])
-};
-app.MapGet("/api/v1/recipes", (string? ingredient, int? maxMinutes, string? mealType, string? tag) => Results.Ok(recipes.Where(r => (string.IsNullOrWhiteSpace(ingredient) || r.Ingredients.Any(i => i.Name.Contains(ingredient, StringComparison.OrdinalIgnoreCase))) && (!maxMinutes.HasValue || r.TotalMinutes <= maxMinutes) && (string.IsNullOrWhiteSpace(mealType) || r.MealType.Equals(mealType, StringComparison.OrdinalIgnoreCase)) && (string.IsNullOrWhiteSpace(tag) || r.DietaryTags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase))))));
-app.MapGet("/api/v1/recipes/{id}", (string id) => recipes.FirstOrDefault(r => r.Id == id) is { } recipe ? Results.Ok(recipe) : Results.NotFound());
-app.MapGet("/mcp/resources/recipes/catalog", () => Results.Ok(new { uri = "recipes://catalog", recipes }));
-app.MapPost("/mcp/tools/find_recipes", (RecipeSearch input) => Results.Ok(new { structuredContent = recipes.Where(r => (string.IsNullOrWhiteSpace(input.Ingredient) || r.Ingredients.Any(i => i.Name.Contains(input.Ingredient, StringComparison.OrdinalIgnoreCase))) && (!input.MaxMinutes.HasValue || r.TotalMinutes <= input.MaxMinutes) && (string.IsNullOrWhiteSpace(input.MealType) || r.MealType.Equals(input.MealType, StringComparison.OrdinalIgnoreCase))).ToArray() }));
-app.MapPost("/mcp/tools/get_recipe", (RecipeLookup input) => recipes.FirstOrDefault(r => r.Id == input.RecipeId) is { } recipe ? Results.Ok(new { structuredContent = recipe }) : Results.NotFound());
-app.MapPost("/mcp/tools/scale_recipe", (ScaleRecipe input) => recipes.FirstOrDefault(r => r.Id == input.RecipeId) is { } recipe && input.Servings > 0 ? Results.Ok(new { structuredContent = recipe with { Ingredients = recipe.Ingredients.Select(i => i with { Quantity = i.Quantity * input.Servings / 2m }).ToArray() } }) : Results.ValidationProblem(new Dictionary<string, string[]> { ["recipe"] = ["A recipe and positive serving count are required."] }));
-app.MapGet("/mcp/capabilities", () => Results.Ok(new { version = "v1", resources = new[] { "recipes://catalog" }, tools = new[] { "find_recipes", "get_recipe", "scale_recipe" } }));
+var api = app.MapGroup("/api/v1/recipes").WithTags("Recipes");
+api.MapGet("", async (Guid householdId, string? ingredient, int? maxMinutes, string? mealType, string? tag, NpgsqlDataSource db) => Results.Ok((await List(db, householdId)).Where(r => (string.IsNullOrWhiteSpace(ingredient) || r.Ingredients.Any(i => i.Name.Contains(ingredient, StringComparison.OrdinalIgnoreCase))) && (!maxMinutes.HasValue || r.TotalMinutes <= maxMinutes) && (string.IsNullOrWhiteSpace(mealType) || r.Tags.Any(t => t.Equals(mealType, StringComparison.OrdinalIgnoreCase))) && (string.IsNullOrWhiteSpace(tag) || r.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase))))));
+api.MapGet("/proposals", async (Guid householdId, NpgsqlDataSource db) => Results.Ok(await ListProposals(db, householdId)));
+api.MapGet("/{id:guid}", async (Guid id, Guid householdId, NpgsqlDataSource db) => await Read(db, id, householdId) is { } recipe ? Results.Ok(recipe) : Results.NotFound());
+api.MapPost("", async (RecipeInput input, NpgsqlDataSource db) => { var errors = Validate(input); if (errors.Count > 0) return Results.ValidationProblem(errors); var recipe = Recipe.Create(input, "user", null); await Save(db, recipe); return Results.Created($"/api/v1/recipes/{recipe.Id}", recipe); });
+api.MapPatch("/{id:guid}", async (Guid id, RecipeInput input, int expectedRevision, NpgsqlDataSource db) => { var existing = await Read(db, id, input.HouseholdId); if (existing is null) return Results.NotFound(); if (existing.Revision != expectedRevision) return Results.Conflict(new { code = "revision_conflict", currentRevision = existing.Revision }); var errors = Validate(input); if (errors.Count > 0) return Results.ValidationProblem(errors); var updated = Recipe.Create(input, "user", existing.Id, existing.Revision + 1, existing.CreatedAt); await Save(db, updated); return Results.Ok(updated); });
+api.MapDelete("/{id:guid}", async (Guid id, Guid householdId, int expectedRevision, NpgsqlDataSource db) => { var recipe = await Read(db, id, householdId); if (recipe is null) return Results.NotFound(); if (recipe.Revision != expectedRevision) return Results.Conflict(new { code = "revision_conflict", currentRevision = recipe.Revision }); await Delete(db, recipe); return Results.NoContent(); });
+
+app.MapGet("/mcp/resources/recipes/catalog", async (Guid householdId, NpgsqlDataSource db) => Results.Ok(new { uri = "recipes://catalog", recipes = await List(db, householdId) }));
+app.MapGet("/mcp/resources/recipes/{id:guid}", async (Guid id, Guid householdId, NpgsqlDataSource db) => await Read(db, id, householdId) is { } recipe ? Results.Ok(new { uri = $"recipes://recipe/{id}", recipe }) : Results.NotFound());
+app.MapPost("/mcp/tools/find_recipes", async (RecipeSearch input, NpgsqlDataSource db) => Results.Ok(new { structuredContent = (await List(db, input.HouseholdId)).Where(r => string.IsNullOrWhiteSpace(input.Ingredient) || r.Ingredients.Any(i => i.Name.Contains(input.Ingredient, StringComparison.OrdinalIgnoreCase))).ToArray() }));
+app.MapPost("/mcp/tools/get_recipe", async (RecipeLookup input, NpgsqlDataSource db) => await Read(db, input.RecipeId, input.HouseholdId) is { } recipe ? Results.Ok(new { structuredContent = recipe }) : Results.NotFound());
+app.MapPost("/mcp/tools/propose_recipe_create", async (RecipeInput input, NpgsqlDataSource db) => await Propose(db, "create", null, input));
+app.MapPost("/mcp/tools/propose_recipe_update", async (RecipeProposalInput input, NpgsqlDataSource db) => await Propose(db, "update", input.RecipeId, input.Recipe));
+app.MapPost("/mcp/tools/propose_recipe_delete", async (RecipeDeleteProposal input, NpgsqlDataSource db) => await Propose(db, "delete", input.RecipeId, null, input.HouseholdId, input.ExpectedRevision));
+app.MapPost("/mcp/tools/apply_approved_recipe_proposal", async (ApplyProposal input, NpgsqlDataSource db) => await Apply(db, input));
+app.MapGet("/mcp/capabilities", () => Results.Ok(new { version = "v1", resources = new[] { "recipes://catalog", "recipes://recipe/{recipeId}" }, tools = new[] { "find_recipes", "get_recipe", "propose_recipe_create", "propose_recipe_update", "propose_recipe_delete", "apply_approved_recipe_proposal" } }));
+app.MapMcpHttpServer(new("recipe-service", ["find_recipes", "get_recipe", "propose_recipe_create", "propose_recipe_update", "propose_recipe_delete", "apply_approved_recipe_proposal"], ["recipes://catalog", "recipes://recipe/{recipeId}"], RecipeToolDefinitions()));
 app.Run();
 
-record Recipe(string Id, string Name, string MealType, int TotalMinutes, string[] DietaryTags, RecipeIngredient[] Ingredients);
-record RecipeIngredient(string Name, decimal Quantity, string Unit, string? NutritionProductId);
-record RecipeSearch(string? Ingredient, int? MaxMinutes, string? MealType);
-record RecipeLookup(string RecipeId);
-record ScaleRecipe(string RecipeId, int Servings);
+static IReadOnlyDictionary<string, McpToolDefinition> RecipeToolDefinitions()
+{
+    var identifier = new { type = "string", format = "uuid" };
+    var ingredient = new
+    {
+        type = "object",
+        additionalProperties = false,
+        properties = new
+        {
+            name = new { type = "string", description = "Ingredient name." },
+            quantity = new { type = "number", exclusiveMinimum = 0 },
+            unit = new { type = "string", description = "Measurement unit, for example g, ml, or item." },
+            nutritionProductId = new { type = "string", description = "Optional nutrition product ID." },
+            unresolved = new { type = "boolean", description = "True when no nutrition product has been matched." }
+        },
+        required = new[] { "name", "quantity", "unit" }
+    };
+    var recipe = new
+    {
+        type = "object",
+        additionalProperties = false,
+        properties = new
+        {
+            householdId = identifier,
+            title = new { type = "string" },
+            description = new { type = "string" },
+            instructions = new { type = "string", description = "Ordered cooking instructions." },
+            totalMinutes = new { type = "integer", minimum = 0 },
+            servings = new { type = "integer", minimum = 1 },
+            tags = new { type = "array", items = new { type = "string" } },
+            ingredients = new { type = "array", minItems = 1, items = ingredient }
+        },
+        required = new[] { "householdId", "title", "instructions", "totalMinutes", "servings", "ingredients" }
+    };
+    return new Dictionary<string, McpToolDefinition>
+    {
+        ["find_recipes"] = new("Find recipes in a household, optionally by ingredient.", new { type = "object", additionalProperties = false, properties = new { householdId = identifier, ingredient = new { type = "string" } }, required = new[] { "householdId" } }),
+        ["get_recipe"] = new("Read one recipe owned by a household.", new { type = "object", additionalProperties = false, properties = new { householdId = identifier, recipeId = identifier }, required = new[] { "householdId", "recipeId" } }),
+        ["propose_recipe_create"] = new("Create a recipe proposal. It must be explicitly approved with apply_approved_recipe_proposal before saving.", recipe),
+        ["propose_recipe_update"] = new("Propose an update to the current recipe revision. Approval is required before saving.", new { type = "object", additionalProperties = false, properties = new { recipeId = identifier, expectedRevision = new { type = "integer", minimum = 1 }, recipe }, required = new[] { "recipeId", "expectedRevision", "recipe" } }),
+        ["propose_recipe_delete"] = new("Propose deleting a recipe. Approval is required before deletion.", new { type = "object", additionalProperties = false, properties = new { householdId = identifier, recipeId = identifier, expectedRevision = new { type = "integer", minimum = 1 } }, required = new[] { "householdId", "recipeId", "expectedRevision" } }),
+        ["apply_approved_recipe_proposal"] = new("Apply a pending recipe proposal after explicit user approval.", new { type = "object", additionalProperties = false, properties = new { proposalId = identifier, approvalReference = new { type = "string", minLength = 1 }, idempotencyKey = new { type = "string", minLength = 1 } }, required = new[] { "proposalId", "approvalReference", "idempotencyKey" } })
+    };
+}
+
+static Dictionary<string, string[]> Validate(RecipeInput input) { var e = new Dictionary<string, string[]>(); if (input.HouseholdId == Guid.Empty) e["householdId"] = ["A household is required."]; if (string.IsNullOrWhiteSpace(input.Title)) e["title"] = ["A title is required."]; if (input.Servings <= 0) e["servings"] = ["Servings must be positive."]; if (string.IsNullOrWhiteSpace(input.Instructions)) e["instructions"] = ["Instructions are required."]; if (input.Ingredients is null || input.Ingredients.Length == 0 || input.Ingredients.Any(i => string.IsNullOrWhiteSpace(i.Name) || i.Quantity <= 0 || string.IsNullOrWhiteSpace(i.Unit))) e["ingredients"] = ["Every ingredient requires a name, positive quantity, and unit."]; return e; }
+static async Task<IResult> Propose(NpgsqlDataSource db, string kind, Guid? recipeId, RecipeInput? recipe, Guid? householdId = null, int? expectedRevision = null) { var id = householdId ?? recipe?.HouseholdId ?? Guid.Empty; if (kind != "delete") { var errors = Validate(recipe!); if (errors.Count > 0) return Results.ValidationProblem(errors); } var proposal = new Proposal(Guid.NewGuid(), id, kind, recipeId, expectedRevision, recipe, "Pending", DateTimeOffset.UtcNow); await using var c = db.CreateCommand("INSERT INTO recipe_proposals (id,household_id,kind,recipe_id,expected_revision,payload,status,created_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)"); c.Parameters.AddWithValue(proposal.Id); c.Parameters.AddWithValue(proposal.HouseholdId); c.Parameters.AddWithValue(proposal.Kind); c.Parameters.AddWithValue((object?)proposal.RecipeId ?? DBNull.Value); c.Parameters.AddWithValue((object?)proposal.ExpectedRevision ?? DBNull.Value); c.Parameters.AddWithValue(JsonSerializer.Serialize(proposal.Recipe)); c.Parameters.AddWithValue(proposal.Status); c.Parameters.AddWithValue(proposal.CreatedAt); await c.ExecuteNonQueryAsync(); return Results.Ok(new { structuredContent = proposal, requiresApproval = true }); }
+static async Task<IResult> Apply(NpgsqlDataSource db, ApplyProposal input) { if (string.IsNullOrWhiteSpace(input.ApprovalReference) || string.IsNullOrWhiteSpace(input.IdempotencyKey)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["approval"] = ["Approval reference and idempotency key are required."] }); await using var tx = await db.OpenConnectionAsync(); await using var existing = tx.CreateCommand(); existing.CommandText = "SELECT recipe_id FROM recipe_idempotency WHERE idempotency_key=$1"; existing.Parameters.AddWithValue(input.IdempotencyKey); var prior = await existing.ExecuteScalarAsync(); if (prior is Guid priorId) return Results.Ok(new { recipeId = priorId, idempotent = true }); var proposal = await ReadProposal(db, input.ProposalId); if (proposal is null || proposal.Status != "Pending") return Results.Conflict(new { code = "proposal_not_pending" }); Recipe? recipe = null; if (proposal.Kind == "create") { recipe = Recipe.Create(proposal.Recipe!, "agent", null, 1, null, input.ApprovalReference); await Save(db, recipe); } else { var current = await Read(db, proposal.RecipeId!.Value, proposal.HouseholdId); if (current is null) return Results.NotFound(); if (current.Revision != proposal.ExpectedRevision) return Results.Conflict(new { code = "revision_conflict", currentRevision = current.Revision }); if (proposal.Kind == "delete") { await Delete(db, current); recipe = current; } else { recipe = Recipe.Create(proposal.Recipe!, "agent", current.Id, current.Revision + 1, current.CreatedAt, input.ApprovalReference); await Save(db, recipe); } } await using var mark = db.CreateCommand("UPDATE recipe_proposals SET status='Applied', approval_reference=$2 WHERE id=$1; INSERT INTO recipe_idempotency (idempotency_key,recipe_id) VALUES ($3,$4)"); mark.Parameters.AddWithValue(proposal.Id); mark.Parameters.AddWithValue(input.ApprovalReference); mark.Parameters.AddWithValue(input.IdempotencyKey); mark.Parameters.AddWithValue(recipe!.Id); await mark.ExecuteNonQueryAsync(); return Results.Ok(new { structuredContent = recipe, approvalReference = input.ApprovalReference }); }
+static async Task Migrate(NpgsqlDataSource db) { await using var c = db.CreateCommand("CREATE TABLE IF NOT EXISTS recipes (id uuid PRIMARY KEY, household_id uuid NOT NULL, title text NOT NULL, description text NULL, instructions text NOT NULL, total_minutes int NOT NULL, servings int NOT NULL, tags jsonb NOT NULL, ingredients jsonb NOT NULL, revision int NOT NULL, source text NOT NULL, approval_reference text NULL, created_at timestamptz NOT NULL, deleted_at timestamptz NULL); CREATE TABLE IF NOT EXISTS recipe_revisions (recipe_id uuid NOT NULL, revision int NOT NULL, payload jsonb NOT NULL, source text NOT NULL, approval_reference text NULL, created_at timestamptz NOT NULL, PRIMARY KEY (recipe_id, revision)); CREATE TABLE IF NOT EXISTS recipe_proposals (id uuid PRIMARY KEY, household_id uuid NOT NULL, kind text NOT NULL, recipe_id uuid NULL, expected_revision int NULL, payload jsonb NULL, status text NOT NULL, approval_reference text NULL, created_at timestamptz NOT NULL); CREATE TABLE IF NOT EXISTS recipe_idempotency (idempotency_key text PRIMARY KEY, recipe_id uuid NOT NULL);"); await c.ExecuteNonQueryAsync(); }
+static async Task<List<Recipe>> List(NpgsqlDataSource db, Guid householdId) { var result = new List<Recipe>(); await using var c = db.CreateCommand("SELECT id,household_id,title,description,instructions,total_minutes,servings,tags::text,ingredients::text,revision,source,approval_reference,created_at FROM recipes WHERE household_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC"); c.Parameters.AddWithValue(householdId); await using var r = await c.ExecuteReaderAsync(); while (await r.ReadAsync()) result.Add(Map(r)); return result; }
+static async Task<Recipe?> Read(NpgsqlDataSource db, Guid id, Guid householdId) { await using var c = db.CreateCommand("SELECT id,household_id,title,description,instructions,total_minutes,servings,tags::text,ingredients::text,revision,source,approval_reference,created_at FROM recipes WHERE id=$1 AND household_id=$2 AND deleted_at IS NULL"); c.Parameters.AddWithValue(id); c.Parameters.AddWithValue(householdId); await using var r = await c.ExecuteReaderAsync(); return await r.ReadAsync() ? Map(r) : null; }
+static async Task<List<Proposal>> ListProposals(NpgsqlDataSource db, Guid householdId) { var result = new List<Proposal>(); await using var c = db.CreateCommand("SELECT id,household_id,kind,recipe_id,expected_revision,payload::text,status,created_at FROM recipe_proposals WHERE household_id=$1 AND status='Pending' ORDER BY created_at DESC"); c.Parameters.AddWithValue(householdId); await using var r = await c.ExecuteReaderAsync(); while (await r.ReadAsync()) result.Add(new Proposal(r.GetGuid(0), r.GetGuid(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetGuid(3), r.IsDBNull(4) ? null : r.GetInt32(4), r.IsDBNull(5) ? null : JsonSerializer.Deserialize<RecipeInput>(r.GetString(5)), r.GetString(6), r.GetFieldValue<DateTimeOffset>(7))); return result; }
+static Recipe Map(NpgsqlDataReader r) => new(r.GetGuid(0), r.GetGuid(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3), r.GetString(4), r.GetInt32(5), r.GetInt32(6), JsonSerializer.Deserialize<string[]>(r.GetString(7)) ?? [], JsonSerializer.Deserialize<Ingredient[]>(r.GetString(8)) ?? [], r.GetInt32(9), r.GetString(10), r.IsDBNull(11) ? null : r.GetString(11), r.GetFieldValue<DateTimeOffset>(12));
+static async Task Save(NpgsqlDataSource db, Recipe r) { await using var c = db.CreateCommand("INSERT INTO recipes (id,household_id,title,description,instructions,total_minutes,servings,tags,ingredients,revision,source,approval_reference,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13) ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title,description=EXCLUDED.description,instructions=EXCLUDED.instructions,total_minutes=EXCLUDED.total_minutes,servings=EXCLUDED.servings,tags=EXCLUDED.tags,ingredients=EXCLUDED.ingredients,revision=EXCLUDED.revision,source=EXCLUDED.source,approval_reference=EXCLUDED.approval_reference; INSERT INTO recipe_revisions (recipe_id,revision,payload,source,approval_reference,created_at) VALUES ($1,$10,$14::jsonb,$11,$12,now()) ON CONFLICT DO NOTHING"); c.Parameters.AddWithValue(r.Id); c.Parameters.AddWithValue(r.HouseholdId); c.Parameters.AddWithValue(r.Title); c.Parameters.AddWithValue((object?)r.Description ?? DBNull.Value); c.Parameters.AddWithValue(r.Instructions); c.Parameters.AddWithValue(r.TotalMinutes); c.Parameters.AddWithValue(r.Servings); c.Parameters.AddWithValue(JsonSerializer.Serialize(r.Tags)); c.Parameters.AddWithValue(JsonSerializer.Serialize(r.Ingredients)); c.Parameters.AddWithValue(r.Revision); c.Parameters.AddWithValue(r.Source); c.Parameters.AddWithValue((object?)r.ApprovalReference ?? DBNull.Value); c.Parameters.AddWithValue(r.CreatedAt); c.Parameters.AddWithValue(JsonSerializer.Serialize(r)); await c.ExecuteNonQueryAsync(); }
+static async Task Delete(NpgsqlDataSource db, Recipe r) { await using var c = db.CreateCommand("UPDATE recipes SET deleted_at=now(), revision=revision+1 WHERE id=$1"); c.Parameters.AddWithValue(r.Id); await c.ExecuteNonQueryAsync(); }
+static async Task<Proposal?> ReadProposal(NpgsqlDataSource db, Guid id) { await using var c = db.CreateCommand("SELECT id,household_id,kind,recipe_id,expected_revision,payload::text,status,created_at FROM recipe_proposals WHERE id=$1"); c.Parameters.AddWithValue(id); await using var r = await c.ExecuteReaderAsync(); return await r.ReadAsync() ? new Proposal(r.GetGuid(0), r.GetGuid(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetGuid(3), r.IsDBNull(4) ? null : r.GetInt32(4), r.IsDBNull(5) ? null : JsonSerializer.Deserialize<RecipeInput>(r.GetString(5)), r.GetString(6), r.GetFieldValue<DateTimeOffset>(7)) : null; }
+record Recipe(Guid Id, Guid HouseholdId, string Title, string? Description, string Instructions, int TotalMinutes, int Servings, string[] Tags, Ingredient[] Ingredients, int Revision, string Source, string? ApprovalReference, DateTimeOffset CreatedAt) { public static Recipe Create(RecipeInput x, string source, Guid? id = null, int revision = 1, DateTimeOffset? createdAt = null, string? approval = null) => new(id ?? Guid.NewGuid(), x.HouseholdId, x.Title.Trim(), x.Description?.Trim(), x.Instructions.Trim(), x.TotalMinutes, x.Servings, x.Tags ?? [], x.Ingredients, revision, source, approval, createdAt ?? DateTimeOffset.UtcNow); }
+record Ingredient(string Name, decimal Quantity, string Unit, string? NutritionProductId, bool Unresolved = false);
+record RecipeInput(Guid HouseholdId, string Title, string? Description, string Instructions, int TotalMinutes, int Servings, string[]? Tags, Ingredient[] Ingredients);
+record RecipeSearch(Guid HouseholdId, string? Ingredient);
+record RecipeLookup(Guid HouseholdId, Guid RecipeId);
+record RecipeProposalInput(Guid RecipeId, int ExpectedRevision, RecipeInput Recipe);
+record RecipeDeleteProposal(Guid HouseholdId, Guid RecipeId, int ExpectedRevision);
+record Proposal(Guid Id, Guid HouseholdId, string Kind, Guid? RecipeId, int? ExpectedRevision, RecipeInput? Recipe, string Status, DateTimeOffset CreatedAt);
+record ApplyProposal(Guid ProposalId, string ApprovalReference, string IdempotencyKey);
