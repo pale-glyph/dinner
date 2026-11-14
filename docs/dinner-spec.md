@@ -16,6 +16,8 @@ The first product capabilities are:
 2. Producing and maintaining shopping lists.
 3. Producing meal plans.
 
+Open Food Facts will provide the initial external food-product and nutrition dataset. Dinner will ingest a local, curated projection of the data rather than query the public service for every user interaction. The source data is community-contributed, so nutrition values and product metadata must be treated as evidence with provenance and confidence, not as guaranteed truth.
+
 ## 2. Goals and non-goals
 
 ### Goals
@@ -55,6 +57,10 @@ A meal plan maps meals to dates and meal slots. It contains selected recipes or 
 ### Agent run
 
 An agent run is a traceable execution on the in-house agent platform. It records the user request, context references, tools invoked, proposed changes, approvals, results, and any errors. Agent runs must be auditable and replayable where practical.
+
+### Food product and nutrition data
+
+A food product is a packaged or generic food reference identified by a source identifier, such as a barcode or canonical ingredient key. Nutrition data contains nutrient values, units, serving basis, source, import version, and confidence. Product nutrition is separate from household pantry quantities so that the same product can be reused across households.
 
 ## 4. Primary user journeys
 
@@ -106,6 +112,7 @@ flowchart LR
     Gateway --> Shopping[Shopping List Service]
     Gateway --> Meals[Meal Planning Service]
     Gateway --> Recipes[Recipe Service]
+    Gateway --> Nutrition[Nutrition Data Service]
     Gateway --> AgentAPI[Agent Gateway]
 
     AgentAPI <-->|HTTP / webhooks| Agents[In-house Agent Platform]
@@ -115,12 +122,14 @@ flowchart LR
     MCP --> Meals
     MCP --> Recipes
     MCP --> Household
+    MCP --> Nutrition
 
     Household --> HouseholdDB[(Household DB)]
     Pantry --> PantryDB[(Pantry DB)]
     Shopping --> ShoppingDB[(Shopping DB)]
     Meals --> MealsDB[(Meal Plan DB)]
     Recipes --> RecipeDB[(Recipe DB)]
+    Nutrition --> NutritionDB[(Nutrition DB)]
     AgentAPI --> AgentDB[(Agent Run DB)]
 
     Pantry -. events .-> Bus[(Event Bus)]
@@ -139,12 +148,31 @@ All backend services should be independently deployable C# services, preferably 
 | Household Service | Local household/profile context, preferences, dietary constraints, permissions, and settings | Households, profiles, preferences |
 | Pantry Service | Pantry items, quantities, locations, consumption, expiry, and stock state | Pantry items and pantry history |
 | Recipe Service | Recipes, ingredients, tags, substitutions, preparation metadata, and search | Recipes and recipe metadata |
+| Nutrition Data Service | Open Food Facts ingestion, product lookup, nutrient normalisation, provenance, and local nutrition projections | Imported product and nutrient records |
 | Meal Planning Service | Meal-plan drafts, selected meals, constraints, servings, locks, and plan versions | Meal plans and meal assignments |
 | Shopping List Service | Shopping lists, line items, units, grouping, completion, and list history | Shopping lists and shopping items |
 | Agent Gateway | HTTP/webhook adapter between the web frontend and in-house agent platform; conversation context, approval requests, and run status | Conversations, agent runs, proposals, approvals |
 | Notification Service | Email, push, and in-app notifications | Notification preferences and delivery records |
 
 The Notification Service may be deferred until after the initial release. Search and analytics should initially be implemented within the owning service or as read models, rather than introducing a separate service without a clear need.
+
+### Open Food Facts integration
+
+The Nutrition Data Service will use Open Food Facts bulk exports for initial and periodic ingestion, and may use the product API for targeted lookups or refreshes. Bulk exports are preferred for large volumes; the Open Food Facts documentation advises downloading CSV or JSONL rather than issuing large numbers of API searches. The import pipeline must be resumable, versioned, and able to record the source export date.
+
+The integration must:
+
+- Store the Open Food Facts product code, source URL, import version, and source timestamp.
+- Normalise nutrient names and units into Dinner’s internal nutrient vocabulary.
+- Preserve original values and serving basis alongside normalised values.
+- Record missing, estimated, or conflicting values rather than silently filling them.
+- Use a descriptive User-Agent for any API requests and respect published rate limits.
+- Keep Open Food Facts attribution and ODbL/database-content licence information with the imported projection and product documentation.
+- Avoid redistributing product images until their separate image licensing requirements are reviewed.
+
+Open Food Facts data is provided by contributors and is not guaranteed to be complete or accurate. Dinner must display nutrition as informational, avoid medical claims, and avoid presenting missing values as zero.
+
+Reference documentation: [Open Food Facts data](https://world.openfoodfacts.org/data), [API documentation](https://openfoodfacts.github.io/documentation/docs/Product-Opener/api/), and [licensing guidance](https://openfoodfacts.github.io/documentation/docs/Product-Opener/api/tutorials/license-be-on-the-legal-side/).
 
 ## 7. Frontend architecture
 
@@ -165,6 +193,7 @@ Initial screens:
 4. Meal-plan calendar and meal detail view.
 5. Assistant conversation and approval panel.
 6. Agent activity/history view.
+7. Nutrition details on supported products, recipes, and meal plans.
 
 ## 8. LLM and agent platform integration
 
