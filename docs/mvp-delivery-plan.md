@@ -6,17 +6,18 @@
 
 ## 1. Objective
 
-Deliver the first usable Dinner release in which a user can manage pantry items, ask the in-house agent for a meal plan, approve the result, and generate an editable shopping list from that plan.
+Deliver the first usable Dinner release in which a user can manage pantry items and use a chat interface backed by the in-house agent platform to generate, review, save, edit, and delete household recipes.
 
 The MVP should prove the complete product loop:
 
 ```mermaid
 flowchart LR
-    Pantry[Manage pantry] --> Plan[Generate meal plan]
-    Plan --> Approve[Review and approve]
-    Approve --> Shopping[Generate shopping list]
-    Shopping --> Edit[Edit and complete list]
-    Edit --> Pantry
+    Pantry[Manage pantry] --> Chat[Chat with recipe agent]
+    Chat --> Draft[Generated recipe draft]
+    Draft --> Review[Review and approve]
+    Review --> Recipes[Saved household recipes]
+    Recipes --> CRUD[Edit or delete recipes]
+    CRUD --> Chat
 ```
 
 ## 2. MVP scope
@@ -25,13 +26,12 @@ flowchart LR
 
 - Local household/profile context without authentication.
 - Pantry item CRUD, consumption, expiry, and low-stock views.
-- A small structured recipe catalogue.
+- A household recipe collection with manual and agent-assisted CRUD.
+- A chat interface for recipe generation, refinement, and recipe-management requests.
 - A local nutrition-data projection seeded from an Open Food Facts fixture or representative export subset.
 - Nutrition lookup and provenance on supported food products and recipe ingredients.
-- One-week meal-plan drafts with serving count and basic constraints.
-- Review, edit, approve, and commit meal-plan drafts.
-- Shopping-list generation from an approved meal plan.
-- Manual shopping-list editing and item completion.
+- Recipe drafts with structured ingredients, servings, instructions, tags, and source/agent-run attribution.
+- Explicit confirmation before an agent creates, overwrites, or deletes a saved recipe.
 - Agent conversations through the Agent Gateway.
 - HTTP/webhook communication with the in-house agent platform.
 - MCP resources and tools exposed by Dinner domain services.
@@ -49,7 +49,7 @@ flowchart LR
 - Advanced nutrition calculation or medical dietary advice.
 - Full production-scale Open Food Facts ingestion and product-image redistribution.
 - Multi-region deployment and production-scale tenancy.
-- Fully autonomous write actions without approval.
+- Fully autonomous write actions without confirmation.
 
 ## 3. Delivery principles
 
@@ -65,13 +65,13 @@ flowchart LR
 
 | Component | MVP responsibility | Priority |
 | --- | --- | --- |
-| Next.js Web App | User workflows, proposal review, and status display | Must have |
+| Next.js Web App | Pantry, recipe-chat workspace, recipe editor, proposal review, and status display | Must have |
 | Household Service | Local profile, preferences, and constraints | Must have |
 | Pantry Service | Inventory and stock context | Must have |
-| Recipe Service | Small searchable recipe catalogue | Must have |
+| Recipe Service | Household recipe CRUD, versioning, search, and generated-draft validation | Must have |
 | Nutrition Data Service | Local Open Food Facts projection and nutrition lookups | Must have |
-| Meal Planning Service | Draft, validate, edit, and commit meal plans | Must have |
-| Shopping List Service | Generate, edit, and complete lists | Must have |
+| Meal Planning Service | Deferred follow-on capability | Later |
+| Shopping List Service | Deferred follow-on capability | Later |
 | Agent Gateway | HTTP/webhook boundary and run audit | Must have |
 | Notification Service | Deferred; in-app status is handled by the frontend and Agent Gateway | Not MVP |
 
@@ -119,37 +119,37 @@ Exit criteria:
 - Agent tools can answer what is available and what is expiring.
 - Domain and API tests cover the main inventory rules.
 
-### Phase 2 — Recipes and meal-plan generation
+### Phase 2 — Chat-driven recipe workspace
 
-**Outcome:** A user can generate and review a constrained meal-plan draft.
+**Outcome:** A user can ask the agent to create or change a recipe and explicitly save the result to their household recipe collection.
 
 Work:
 
-- Implement Recipe Service catalogue and ingredient model.
+- Implement Recipe Service household ownership, CRUD, draft/version, ingredient, and source-attribution model.
 - Implement Nutrition Data Service with a representative Open Food Facts fixture, import manifest, nutrient normalisation, and provenance.
-- Add recipe search by ingredient, time, meal type, and dietary tags.
+- Add recipe search by ingredient, time, meal type, and dietary tags, scoped to a household.
 - Link recipe ingredients to nutrition references where available.
-- Implement Meal Planning Service draft, assignment, validation, and versioning.
-- Add recipe and meal-planning MCP resources/tools.
+- Add recipe MCP read tools plus draft/create/update/delete proposal tools.
 - Add nutrition MCP resources and read-only lookup tools.
-- Implement Agent Gateway run creation and progress state.
+- Implement Agent Gateway conversation/thread creation, timeline reconciliation, and progress state.
 - Connect the Agent Gateway to the in-house platform HTTP/webhook contract.
-- Build meal-plan calendar and proposal review UI.
+- Build an assistant chat, generated-recipe draft, recipe editor, and deletion-confirmation UI.
 
 Exit criteria:
 
-- A one-week draft can use pantry context and household preferences.
-- A meal or recipe can display nutrition values when source coverage exists.
-- Conflicting or unmet constraints are shown to the user.
-- The user can swap a meal, lock a meal, and approve a draft.
-- The platform can invoke Dinner MCP capabilities through the configured interface.
+- The agent can use pantry context and household preferences to generate a structured recipe draft.
+- A recipe can display nutrition values when source coverage exists.
+- Missing or conflicting constraints are shown to the user before save.
+- The user can edit a generated draft, approve a create/update, or reject it; deletion requires an explicit confirmation.
+- The platform can invoke the configured Dinner MCP recipe capabilities.
 
-### Phase 3 — Shopping-list loop
+### Phase 3 — Meal planning and shopping-list loop
 
-**Outcome:** An approved meal plan produces a useful editable shopping list.
+**Outcome:** Saved recipes can be assembled into a meal plan and then produce a useful editable shopping list.
 
 Work:
 
+- Implement Meal Planning Service draft, assignment, validation, and versioning using saved recipes.
 - Implement Shopping List Service item and list lifecycle.
 - Calculate required ingredients from a committed meal plan.
 - Subtract compatible pantry stock.
@@ -197,17 +197,18 @@ flowchart TD
     Foundation --> Pantry[Pantry service]
     Household --> Preferences[Preferences and constraints]
     Pantry --> PantryMCP[Pantry MCP capabilities]
-    Preferences --> Recipe[Recipe service]
-    PantryMCP --> Recipe
-    Recipe --> Meal[Meal planning service]
+    Preferences --> Recipe[Recipe CRUD and validation]
+    PantryMCP --> Agent[Agent Gateway and platform integration]
+    Recipe --> Agent
+    Nutrition[Nutrition Data Service] --> Recipe
+    Agent --> Chat[Chat and recipe proposal UX]
+    Chat --> Recipe
+    Recipe --> Meal[Later: meal planning service]
     Preferences --> Meal
-    Nutrition[Nutrition Data Service] --> Meal
-    Nutrition --> Recipe
-    Meal --> Agent[Agent Gateway and platform integration]
-    Agent --> Approval[Proposal and approval UX]
+    Nutrition --> Meal
     Meal --> Shopping[Shopping list service]
     Pantry --> Shopping
-    Approval --> Shopping
+    Chat --> Shopping
     Shopping --> E2E[End-to-end MVP validation]
     Agent --> E2E
 ```
@@ -236,9 +237,9 @@ flowchart TD
 
 - Application shell and local household setup.
 - Pantry list, editor, and alerts.
-- Recipe search and detail views.
-- Meal-plan calendar and proposal review.
-- Shopping-list editor and completion flow.
+- Recipe chat, generated-recipe draft, and recipe editor views.
+- Deletion confirmation and recipe version/conflict states.
+- Meal-plan calendar and shopping-list editor (Phase 3).
 - Agent progress, clarification, approval, and failure states.
 
 ### Quality and operations
@@ -247,7 +248,7 @@ flowchart TD
 - API contract tests from OpenAPI.
 - MCP capability and tool invocation tests.
 - Integration tests with PostgreSQL and a mock agent platform.
-- Browser test for the full pantry-to-plan-to-shopping flow.
+- Browser test for the full pantry-to-chat-to-saved-recipe flow.
 - Structured logs, health checks, and local troubleshooting documentation.
 
 ## 8. Proposed backlog by milestone
@@ -272,22 +273,22 @@ flowchart TD
 - [x] Build pantry UI and seed data.
 - [x] Add optional pantry-to-food-product linking.
 
-### M2 — Agent meal planning usable
+### M2 — Agent recipe chat usable
 
-- [x] Implement recipe catalogue and search.
-- [x] Implement nutrition import fixture and local product lookup.
-- [x] Add nutrient normalisation and provenance fields.
-- [x] Link recipe ingredients to nutrition references where available.
-- [x] Implement meal-plan draft and version model.
-- [x] Implement constraint validation.
-- [x] Implement Agent Gateway run state machine.
-- [x] Implement HTTP request and webhook fixtures.
-- [x] Add recipe and meal-plan MCP tools.
-- [x] Add read-only nutrition MCP tools.
-- [x] Build meal-plan review and approval UI.
+- [ ] Implement household-scoped recipe persistence, CRUD, revisions, and source attribution.
+- [ ] Implement structured recipe-draft validation for ingredients, servings, instructions, tags, and unresolved ingredients.
+- [ ] Implement nutrition import fixture, local product lookup, normalisation, provenance, and recipe links.
+- [ ] Implement Agent Gateway conversation/thread lifecycle against the platform timeline API.
+- [ ] Implement signed webhook storage, deduplication, and timeline reconciliation.
+- [ ] Add recipe MCP resources and typed read/draft/create/update/delete proposal tools.
+- [ ] Add read-only nutrition MCP tools.
+- [ ] Build assistant chat, draft review, recipe editor, and explicit deletion confirmation UI.
+- [ ] Add an end-to-end test: pantry context → chat-generated recipe → approve → edit → delete.
 
-### M3 — Shopping loop usable
+### M3 — Meal planning and shopping loop usable
 
+- [ ] Implement meal-plan persistence, drafts, assignments, constraints, and versions.
+- [ ] Add meal-plan MCP tools and calendar UI using saved household recipes.
 - [ ] Implement shopping-list persistence and migrations.
 - [ ] Implement plan ingredient calculation.
 - [ ] Implement pantry subtraction and ingredient merging.
@@ -311,19 +312,19 @@ The agent integration must be developed against a stable test contract even if t
 
 ### Minimum platform contract
 
-- Start a run with a conversation, request, household context, and MCP server set.
-- Return run ID and initial status.
-- Emit progress, clarification, proposal, completion, and failure webhooks.
-- Resume a paused run after approval.
-- Cancel or reject a run.
-- Include event ID, run ID, correlation ID, and event timestamp in every webhook.
+- Start a platform thread with the user prompt and persist its thread ID against the Dinner conversation/run.
+- Treat the platform timeline as the source of truth and persist the highest processed sequence number.
+- Send follow-ups with `Queued` or `Steering` delivery semantics; do not submit a second queued message while one is pending.
+- Receive and verify signed `agent.message` and `agent.tool_call` webhooks using their raw request body, then deduplicate by event ID.
+- Reconcile missed or out-of-order webhook events through the timeline endpoint.
+- Keep recipe approval inside Dinner: after approval, execute the recipe domain command with the approval reference rather than trusting model text as a committed mutation.
 
 ### Minimum MCP contract
 
 - Capability discovery.
 - Structured input and output schemas.
 - Read resources for household, pantry, recipes, and meal plans.
-- Draft-producing tools separated from commit tools.
+- Draft-producing recipe tools separated from approval-gated commit tools.
 - Error codes that distinguish validation, permission, conflict, and transient failure.
 - Idempotency key support for write operations.
 
@@ -331,13 +332,13 @@ The agent integration must be developed against a stable test contract even if t
 
 | Layer | Coverage |
 | --- | --- |
-| Domain unit tests | Quantities, units, constraints, versioning, merging, and approval rules |
+| Domain unit tests | Quantities, recipe validation, revisions, constraints, merging, and approval rules |
 | API tests | Request validation, response schemas, errors, and persistence behavior |
 | MCP contract tests | Capability discovery, schemas, tool authorization context, and idempotency |
 | Integration tests | Service plus PostgreSQL, events, and mock agent platform |
 | Frontend tests | Forms, proposal states, loading/error states, and key interactions |
-| Browser test | Pantry item → agent meal plan → approval → shopping list |
-| Failure tests | Webhook retry, duplicate event, tool timeout, invalid proposal, and partial failure |
+| Browser test | Pantry item → agent recipe chat → approval → edit → delete |
+| Failure tests | Webhook retry, duplicate event, tool timeout, invalid recipe draft, stale revision, and partial failure |
 
 The browser test should use deterministic recipe and agent fixtures so that it validates the product flow without depending on live model output.
 
@@ -349,23 +350,20 @@ The MVP is accepted when all of the following are true:
 2. A user can create local household/profile context.
 3. A user can add pantry items with quantity, unit, and expiry.
 4. The agent can retrieve pantry and preference context through MCP.
-5. The agent can produce a one-week meal-plan draft.
-6. The user can inspect assumptions, warnings, and proposed changes.
-7. The user can edit or reject the proposal before committing it.
-8. The approved plan can produce a shopping-list draft.
-9. The shopping list accounts for compatible pantry stock.
-10. The user can edit and complete shopping-list items.
-11. Agent runs, tool calls, approvals, and failures are traceable.
-12. No critical data mutation occurs without a valid domain command and, for agent writes, an approval reference.
-13. Nutrition values expose their serving basis, provenance, and missing-data state.
-14. The MVP does not present Open Food Facts data as medical advice or guaranteed accuracy.
+5. The user can use chat to request a recipe and receive a structured draft from the platform agent.
+6. The user can inspect ingredients, assumptions, warnings, and proposed changes before saving.
+7. The user can create, edit, and explicitly confirm deletion of a household recipe; agent-originated writes use a valid approval reference.
+8. Agent runs, timeline entries, tool calls, approvals, and failures are traceable.
+9. Nutrition values expose their serving basis, provenance, and missing-data state.
+10. The MVP does not present Open Food Facts data as medical advice or guaranteed accuracy.
 
 ## 12. Risks and mitigations
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | Agent platform contract changes | Integration delay | Build against a mock contract and version the adapter |
-| LLM output is inconsistent | Unreliable plans or lists | Require structured outputs, domain validation, and approval |
+| LLM output is inconsistent | Invalid or misleading recipes | Require structured recipe drafts, domain validation, and approval |
+| Agent overwrite/delete request is ambiguous | Loss of a household recipe | Present the identified recipe, changed fields, and explicit confirmation before mutation |
 | Ingredient and unit ambiguity | Incorrect shopping quantities | Start with a small canonical vocabulary and expose assumptions |
 | Nutrition data is incomplete or inconsistent | Misleading meal summaries | Preserve provenance, show coverage, and never convert missing values to zero |
 | Full Open Food Facts export is large | Slow or fragile local setup | Use a fixture/subset for MVP and run full ingestion as a separate repeatable job |
@@ -384,7 +382,7 @@ The MVP is accepted when all of the following are true:
 - [ ] Nutrition fixture import succeeds and records its source version.
 - [ ] API and MCP contracts are versioned.
 - [ ] Webhook retries and duplicates are tested.
-- [ ] Agent proposal approval is tested.
-- [ ] Pantry-to-plan-to-shopping browser test passes.
+- [ ] Agent recipe-create/update/delete confirmation is tested.
+- [ ] Pantry-to-chat-to-saved-recipe browser test passes.
 - [ ] Known limitations are documented.
 - [ ] Reset, backup, and troubleshooting instructions are documented.

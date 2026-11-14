@@ -9,7 +9,7 @@ Provide the Dinner-facing HTTP and webhook boundary for conversations and agent 
 
 ## Responsibilities
 
-- Start agent conversations and runs.
+- Start and continue platform chat threads for agent conversations.
 - Send scoped household/profile context to the platform.
 - Receive and validate platform webhooks.
 - Persist run status, proposals, tool actions, approvals, and errors.
@@ -22,23 +22,22 @@ Provide the Dinner-facing HTTP and webhook boundary for conversations and agent 
 POST /api/v1/agent/conversations
 POST /api/v1/agent/conversations/{conversationId}/messages
 GET  /api/v1/agent/conversations/{conversationId}
-POST /api/v1/agent/runs/{runId}/approve
-POST /api/v1/agent/runs/{runId}/reject
+POST /api/v1/agent/proposals/{proposalId}/approve
+POST /api/v1/agent/proposals/{proposalId}/reject
 GET  /api/v1/agent/runs/{runId}
 POST /api/v1/agent/webhooks/events
 ```
 
-The webhook endpoint must validate the platform’s signature or shared-secret mechanism once that contract is available, reject replays, and acknowledge quickly before processing long-running events asynchronously.
+The gateway starts a platform thread at `POST /api/projects/{projectId}/agents/{agentId}/threads`, keeps the returned thread ID, and polls its timeline from the last processed sequence. The webhook endpoint validates the HMAC-SHA-256 signature over the raw request body, deduplicates the event ID, durably records the event, and only then returns `2xx`.
 
 ## Platform contract
 
 The gateway must support:
 
-- Run creation with conversation ID, household context, user request, and available MCP servers.
-- Progress, clarification, proposal, completion, and failure events.
-- Approval or rejection callbacks.
-- Idempotent event handling.
-- Timeout, retry, and dead-letter handling.
+- Thread creation, timeline polling, and at most one pending queued message.
+- `agent.message` and `agent.tool_call` webhook handling with the platform's delivery semantics.
+- Proposal extraction from agent messages/tool results; Dinner-owned approval or rejection of the associated recipe command.
+- Event-ID deduplication, sequence ordering, reconciliation, timeout, retry, and dead-letter handling.
 
 ## MCP registration
 
