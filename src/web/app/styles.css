@@ -1,15 +1,37 @@
-:root { color-scheme: light; font-family: Arial, sans-serif; background: #fffaf2; color: #25211e; }
-body { margin: 0; }
-main { max-width: 1000px; margin: 0 auto; padding: 5rem 2rem; }
-.eyebrow { color: #7d4a2d; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
-h1 { font-size: clamp(2.5rem, 8vw, 5rem); margin: .25rem 0; }
-.intro { font-size: 1.25rem; line-height: 1.6; }
-nav { display: flex; flex-wrap: wrap; gap: .75rem; margin: 2rem 0; }
-a { border: 1px solid #d7c4b4; border-radius: 999px; color: inherit; padding: .6rem 1rem; text-decoration: none; }
-a.active { background: #7d4a2d; border-color: #7d4a2d; color: white; }
-a[aria-disabled="true"] { opacity: .5; }
-section { background: #fff; border-radius: 1rem; padding: 1.5rem; }
-.recipe-list { margin-top: 2rem; }
-.pantry-grid { display: grid; gap: 2rem; grid-template-columns: minmax(250px, .8fr) minmax(0, 1.2fr); }
-h2 { margin-top: 0; }
-form, label { display: grid; gap: .4rem; } form { gap: 1rem; } input, select, button { border: 1px solid #d7c4b4; border-radius: .5rem; font: inherit; padding: .65rem; } label span, small, .muted { color: #73685f; font-size: .85rem; } button { background: #7d4a2d; border-color: #7d4a2d; color: white; cursor: pointer; } .form-row, .section-heading, .items li, .actions { display: flex; gap: .75rem; } .form-row label { flex: 1; } .section-heading { align-items: center; justify-content: space-between; } .items { list-style: none; margin: 0; padding: 0; } .items li { align-items: center; border-top: 1px solid #eee2d8; justify-content: space-between; padding: 1rem 0; } .items small { display: block; margin-top: .3rem; } .actions { flex-wrap: wrap; justify-content: end; } button.quiet { background: transparent; border-color: #d7c4b4; color: #62412c; padding: .4rem .6rem; } button.danger { background: transparent; border-color: transparent; color: #9e3026; padding: .4rem; } .status { color: #9e3026; } @media (max-width: 700px) { main { padding: 2rem 1rem; } .pantry-grid { grid-template-columns: 1fr; } .items li { align-items: start; flex-direction: column; } .actions { justify-content: start; } }
+@import "tailwindcss";
+
+@layer base {
+  :root { color-scheme: dark; }
+  body { @apply m-0 min-h-screen bg-slate-950 font-sans text-slate-100 antialiased; }
+  * { @apply border-slate-800; }
+  button, input, select, textarea { font: inherit; }
+  button { @apply cursor-pointer; }
+}
+
+@layer components {
+  .eyebrow { @apply mb-2 text-xs font-bold uppercase tracking-[0.2em] text-cyan-300; }
+  nav a.active { @apply bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-400/10 hover:bg-cyan-300 hover:text-slate-950; }
+  .intro { @apply text-base leading-7 text-slate-400; }
+  section { @apply rounded-2xl border border-slate-800 bg-slate-900/75 p-5 shadow-2xl shadow-black/20 backdrop-blur sm:p-7; }
+  .recipe-list { @apply mt-6; }
+  .pantry-grid { @apply grid gap-8 xl:grid-cols-[minmax(18rem,.8fr)_minmax(0,1.2fr)]; }
+  h2 { @apply m-0 text-lg font-semibold tracking-tight text-white; }
+  form, label { @apply grid gap-2; }
+  form { @apply gap-4; }
+  label { @apply text-sm font-medium text-slate-300; }
+  label span, small, .muted { @apply text-xs font-normal text-slate-500; }
+  input, select, textarea { @apply w-full rounded-xl border bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20; }
+  textarea { @apply min-h-28 resize-y; }
+  button { @apply rounded-xl border border-cyan-400 bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-400/10 transition hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300 focus:ring-offset-2 focus:ring-offset-slate-900; }
+  .form-row, .section-heading, .items li, .actions { @apply flex gap-3; }
+  .form-row { @apply flex-col sm:flex-row; }
+  .form-row label { @apply flex-1; }
+  .section-heading { @apply items-center justify-between gap-4; }
+  .items { @apply m-0 list-none p-0; }
+  .items li { @apply items-start justify-between border-t py-4 first:border-t-0 sm:items-center; }
+  .items small { @apply mt-1 block; }
+  .actions { @apply flex-wrap justify-start sm:justify-end; }
+  button.quiet { @apply border-slate-700 bg-slate-800 px-3 py-2 text-slate-200 shadow-none hover:border-slate-600 hover:bg-slate-700; }
+  button.danger { @apply border-transparent bg-transparent px-2 py-2 text-rose-400 shadow-none hover:bg-rose-500/10 hover:text-rose-300; }
+  .status { @apply rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-200; }
+}
