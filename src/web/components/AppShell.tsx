@@ -1,18 +1,27 @@
-import { NavLink, Outlet } from "react-router-dom";
+"use client";
+
+import { useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+
+const navigation = [
+  { to: "/pantry", label: "Pantry", icon: "▦" },
+  { to: "/assistant", label: "Recipe assistant", icon: "✦" },
+  { to: "/recipes", label: "My recipes", icon: "▤" }
+];
 
 export function AppShell() {
-  return <main className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(34,211,238,.12),_transparent_28rem)]">
-    <div className="mx-auto grid max-w-7xl gap-6 px-4 py-5 sm:px-6 lg:min-h-screen lg:grid-cols-[15rem_minmax(0,1fr)] lg:px-8 lg:py-8">
-      <aside className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 backdrop-blur lg:h-fit lg:sticky lg:top-8">
-        <p className="eyebrow">Dinner</p><h1 className="text-3xl font-bold tracking-tight text-white">Your kitchen</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-400">Dinner ideas, pantry context, and approval-controlled recipes.</p>
-        <nav aria-label="Primary navigation" className="mt-6 grid gap-2">
-          <NavLink className="rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800 hover:text-white" to="/pantry">Pantry</NavLink>
-          <NavLink className="rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800 hover:text-white" to="/assistant">Recipe chat</NavLink>
-          <NavLink className="rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800 hover:text-white" to="/recipes">Recipes</NavLink>
-        </nav>
-      </aside>
-      <div className="space-y-6"><Outlet /></div>
-    </div>
-  </main>;
+  const [isOpen, setIsOpen] = useState(false);
+  const location = useLocation();
+  const currentPage = navigation.find(item => item.to === location.pathname)?.label ?? "Dinner";
+  const closeMenu = () => setIsOpen(false);
+  return <div className="app-shell">
+    <aside className={`app-drawer ${isOpen ? "app-drawer-open" : ""}`} aria-label="Application navigation">
+      <div className="brand-row"><div className="brand-mark" aria-hidden="true">d</div><span className="brand-name">dinner</span><button className="icon-button close-button" onClick={closeMenu} aria-label="Close navigation">×</button></div>
+      <div className="drawer-label">Workspace</div>
+      <nav className="app-nav">{navigation.map(item => <NavLink key={item.to} to={item.to} onClick={closeMenu} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}><span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span></NavLink>)}</nav>
+      <div className="drawer-footer"><div className="account-avatar">D</div><div><strong>My household</strong><span>Personal workspace</span></div></div>
+    </aside>
+    {isOpen && <button className="drawer-scrim" aria-label="Close navigation" onClick={closeMenu} />}
+    <div className="app-main"><header className="top-app-bar"><button className="icon-button menu-button" onClick={() => setIsOpen(true)} aria-label="Open navigation"><span /><span /><span /></button><div className="top-bar-title">{currentPage}</div><button className="icon-button profile-button" aria-label="Household profile">D</button></header><main className="page-content"><Outlet /></main></div>
+  </div>;
 }
