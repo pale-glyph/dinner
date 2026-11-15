@@ -4,15 +4,20 @@ export function RecipeList({
   recipes,
   onEdit,
   onRemove,
+  onRefresh,
 }: {
   recipes: Recipe[];
   onEdit: (recipe: Recipe) => void;
   onRemove: (recipe: Recipe) => void;
+  onRefresh: () => void;
 }) {
   return (
     <section className="recipe-list">
       <div className="section-heading">
         <h2>Your recipes</h2>
+        <button className="quiet" onClick={onRefresh}>
+          Refresh
+        </button>
       </div>
       {recipes.length === 0 ? (
         <p className="muted">No saved recipes yet.</p>

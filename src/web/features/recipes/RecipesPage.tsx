@@ -32,21 +32,14 @@ export function RecipesPage() {
           }}
         />
       </section>
-      <section className="recipe-list">
-        <div className="section-heading">
-          <h2>Your recipes</h2>
-          <button className="quiet" onClick={recipes.load}>
-            Refresh
-          </button>
-        </div>
-        <RecipeList
-          recipes={recipes.recipes}
-          onEdit={setEditing}
-          onRemove={(recipe) => {
-            void recipes.remove(recipe);
-          }}
-        />
-      </section>
+      <RecipeList
+        recipes={recipes.recipes}
+        onEdit={setEditing}
+        onRemove={(recipe) => {
+          void recipes.remove(recipe);
+        }}
+        onRefresh={recipes.load}
+      />
     </>
   );
 }

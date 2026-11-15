@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { Ingredient, Recipe } from "@/types/api";
 
 type RecipeDraft = Omit<Recipe, "id" | "revision">;
@@ -19,6 +19,19 @@ export function RecipeDraftForm({
           .join("\n")
       : "Tinned tomatoes|2|item\nChickpeas|1|item",
   );
+
+  useEffect(() => {
+    setTitle(editing?.title ?? "");
+    setInstructions(editing?.instructions ?? "");
+    setIngredients(
+      editing
+        ? editing.ingredients
+            .map((item) => `${item.name}|${item.quantity}|${item.unit}`)
+            .join("\n")
+        : "Tinned tomatoes|2|item\nChickpeas|1|item",
+    );
+  }, [editing]);
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     await onSubmit({
