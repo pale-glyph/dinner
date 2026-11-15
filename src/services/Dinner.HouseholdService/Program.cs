@@ -21,6 +21,21 @@ api.MapGet("/mine", async (HttpRequest request, NpgsqlDataSource db, IConfigurat
 {
     var account = await Authenticate(request, configuration, db); return account is null ? Results.Unauthorized() : Results.Ok(new { households = await ReadMemberships(db, account.Id) });
 });
+api.MapGet("/{id:guid}/members", async (Guid id, HttpRequest request, NpgsqlDataSource db, IConfiguration configuration) =>
+{
+    var account = await Authenticate(request, configuration, db); if (account is null) return Results.Unauthorized();
+    if (!await IsOwner(db, id, account.Id)) return Results.Forbid();
+    return Results.Ok(new { members = await ReadMembers(db, id) });
+});
+api.MapDelete("/{id:guid}/members/{accountId:guid}", async (Guid id, Guid accountId, HttpRequest request, NpgsqlDataSource db, IConfiguration configuration) =>
+{
+    var account = await Authenticate(request, configuration, db); if (account is null) return Results.Unauthorized();
+    if (!await IsOwner(db, id, account.Id)) return Results.Forbid();
+    if (accountId == account.Id) return Results.BadRequest(new { error = "The household owner cannot remove themself." });
+    await using var command = db.CreateCommand("DELETE FROM household_members WHERE household_id = $1 AND account_id = $2 AND role = 'member'");
+    command.Parameters.AddWithValue(id); command.Parameters.AddWithValue(accountId);
+    return await command.ExecuteNonQueryAsync() == 1 ? Results.NoContent() : Results.NotFound(new { error = "Household member not found." });
+});
 api.MapPost("/{id:guid}/invites", async (Guid id, HttpRequest request, NpgsqlDataSource db, IConfiguration configuration) =>
 {
     var account = await Authenticate(request, configuration, db); if (account is null) return Results.Unauthorized();
@@ -107,6 +122,7 @@ static async Task<AccountContext?> Authenticate(HttpRequest request, IConfigurat
     return await GetOrCreateAccount(db, clerkUserId, request.Headers["X-Account-Email"].FirstOrDefault(), request.Headers["X-Account-Name"].FirstOrDefault());
 }
 static async Task<List<HouseholdMembership>> ReadMemberships(NpgsqlDataSource db, Guid accountId) { var result = new List<HouseholdMembership>(); await using var command = db.CreateCommand("SELECT h.id, h.name, hm.role FROM household_members hm JOIN households h ON h.id = hm.household_id WHERE hm.account_id = $1 ORDER BY CASE hm.role WHEN 'owner' THEN 0 ELSE 1 END, hm.created_at"); command.Parameters.AddWithValue(accountId); await using var reader = await command.ExecuteReaderAsync(); while (await reader.ReadAsync()) result.Add(new(reader.GetGuid(0), reader.GetString(1), reader.GetString(2))); return result; }
+static async Task<List<HouseholdMember>> ReadMembers(NpgsqlDataSource db, Guid householdId) { var result = new List<HouseholdMember>(); await using var command = db.CreateCommand("SELECT a.id, a.display_name, a.email, hm.role FROM household_members hm JOIN accounts a ON a.id = hm.account_id WHERE hm.household_id = $1 ORDER BY CASE hm.role WHEN 'owner' THEN 0 ELSE 1 END, hm.created_at"); command.Parameters.AddWithValue(householdId); await using var reader = await command.ExecuteReaderAsync(); while (await reader.ReadAsync()) result.Add(new(reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3))); return result; }
 static async Task<bool> IsOwner(NpgsqlDataSource db, Guid householdId, Guid accountId) { await using var command = db.CreateCommand("SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id = $1 AND account_id = $2 AND role = 'owner')"); command.Parameters.AddWithValue(householdId); command.Parameters.AddWithValue(accountId); return (bool)(await command.ExecuteScalarAsync())!; }
 static async Task CreateHousehold(NpgsqlDataSource db, Household household, Guid ownerId) { await using var connection = await db.OpenConnectionAsync(); await using var transaction = await connection.BeginTransactionAsync(); await using var insert = new NpgsqlCommand("INSERT INTO households (id,name,servings,dietary_preferences,allergies,disliked_foods) VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb)", connection, transaction); insert.Parameters.AddWithValue(household.Id); insert.Parameters.AddWithValue(household.Name); insert.Parameters.AddWithValue(household.Servings); insert.Parameters.AddWithValue(System.Text.Json.JsonSerializer.Serialize(household.DietaryPreferences)); insert.Parameters.AddWithValue(System.Text.Json.JsonSerializer.Serialize(household.Allergies)); insert.Parameters.AddWithValue(System.Text.Json.JsonSerializer.Serialize(household.DislikedFoods)); await insert.ExecuteNonQueryAsync(); await using var member = new NpgsqlCommand("INSERT INTO household_members (household_id,account_id,role) VALUES ($1,$2,'owner')", connection, transaction); member.Parameters.AddWithValue(household.Id); member.Parameters.AddWithValue(ownerId); await member.ExecuteNonQueryAsync(); await transaction.CommitAsync(); }
 static async Task<Household?> Read(NpgsqlDataSource db, Guid id) { await using var command = db.CreateCommand("SELECT id, name, servings, dietary_preferences::text, allergies::text, disliked_foods::text FROM households WHERE id = $1"); command.Parameters.AddWithValue(id); await using var reader = await command.ExecuteReaderAsync(); return await reader.ReadAsync() ? Map(reader) : null; }
@@ -118,4 +134,5 @@ record HouseholdInput(string? Name, int? Servings, string[]? DietaryPreferences,
 record McpContext(Guid HouseholdId, string? CorrelationId);
 record PreferencesInput(Guid HouseholdId, string[]? DietaryPreferences, string[]? Allergies, string[]? DislikedFoods, string? CorrelationId);
 record HouseholdMembership(Guid Id, string Name, string Role);
+record HouseholdMember(Guid Id, string? DisplayName, string? Email, string Role);
 record AccountContext(Guid Id, string ClerkUserId, string? Email, string? DisplayName, List<HouseholdMembership> Households);
