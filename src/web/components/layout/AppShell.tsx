@@ -9,11 +9,12 @@ const navigation = [
   { to: "/pantry", label: "Pantry", icon: "▦" },
   { to: "/assistant", label: "Recipe assistant", icon: "✦" },
   { to: "/recipes", label: "My recipes", icon: "▤" },
+  { to: "/households", label: "Households", icon: "⌂" },
 ];
 
 export function AppShell() {
   const { user } = useUser();
-  const { household } = useHousehold();
+  const { household, households, selectHousehold } = useHousehold();
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const currentPage =
@@ -62,7 +63,9 @@ export function AppShell() {
             {user?.firstName?.slice(0, 1).toUpperCase() ?? "D"}
           </div>
           <div>
-            <strong>{household?.name ?? "My household"}</strong>
+            <select aria-label="Active household" value={household?.id ?? ""} onChange={(event) => selectHousehold(event.target.value)}>
+              {households.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+            </select>
             <span>
               {household?.role === "owner"
                 ? "Household owner"
