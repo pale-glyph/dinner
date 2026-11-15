@@ -8,7 +8,7 @@ public sealed class AgentRunService(
     IAgentPlatformClient platform,
     IWebhookSignatureValidator signatureValidator,
     IWebhookPayloadParser webhookPayloadParser,
-    IConfiguration configuration)
+    IAgentPlatformWebhookSecretProvider webhookSecretProvider)
 {
     public async Task<StartRunResult> StartAsync(Guid householdId, string prompt, string? correlationId, CancellationToken cancellationToken)
     {
@@ -78,7 +78,7 @@ public sealed class AgentRunService(
 
     public async Task<bool> ProcessWebhookAsync(byte[] rawBody, string payload, string? signature, string? eventId, CancellationToken cancellationToken)
     {
-        var secret = configuration["AgentPlatform:WebhookSecret"];
+        var secret = webhookSecretProvider.GetWebhookSecret();
         if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(signature) || !signatureValidator.IsValid(rawBody, secret, signature)) return false;
         if (string.IsNullOrWhiteSpace(eventId) || !await webhookEvents.TryRecordAsync(eventId, payload, cancellationToken)) return true;
         var eventEntry = webhookPayloadParser.Parse(payload);

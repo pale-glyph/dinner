@@ -13,6 +13,13 @@ public sealed class AgentPlatformOptions
     public string? BaseUrl { get; init; }
     public string? ProjectId { get; init; }
     public string? AgentId { get; init; }
+    public string? WebhookSecret { get; init; }
+}
+
+public sealed class AgentPlatformWebhookSecretProvider(IOptions<AgentPlatformOptions> options)
+    : IAgentPlatformWebhookSecretProvider
+{
+    public string? GetWebhookSecret() => options.Value.WebhookSecret;
 }
 
 public sealed class AgentPlatformHttpClient(IHttpClientFactory clientFactory, IOptions<AgentPlatformOptions> options) : IAgentPlatformClient

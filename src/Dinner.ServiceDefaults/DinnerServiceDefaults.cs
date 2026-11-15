@@ -26,10 +26,10 @@ public static class DinnerServiceDefaults
 
             context.Response.Headers["X-Correlation-ID"] = correlationId;
             using (app.Logger.BeginScope(new Dictionary<string, object?>
-                   {
-                       ["CorrelationId"] = correlationId,
-                       ["Service"] = serviceName
-                   }))
+            {
+                ["CorrelationId"] = correlationId,
+                ["Service"] = serviceName
+            }))
             {
                 await next();
             }

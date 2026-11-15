@@ -20,6 +20,7 @@ builder.Services.AddSingleton<IWebhookEventRepository, PostgresWebhookEventRepos
 builder.Services.AddSingleton<IAgentPlatformClient, AgentPlatformHttpClient>();
 builder.Services.AddSingleton<IWebhookSignatureValidator, HmacWebhookSignatureValidator>();
 builder.Services.AddSingleton<IWebhookPayloadParser, AgentPlatformWebhookParser>();
+builder.Services.AddSingleton<IAgentPlatformWebhookSecretProvider, AgentPlatformWebhookSecretProvider>();
 builder.Services.AddSingleton<AgentRunService>();
 
 var app = builder.Build().MapDinnerServiceDefaults("agent-gateway");
