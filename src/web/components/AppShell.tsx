@@ -26,6 +26,6 @@ export function AppShell() {
       <div className="drawer-footer"><div className="account-avatar">{user?.firstName?.slice(0, 1).toUpperCase() ?? "D"}</div><div><strong>{household?.name ?? "My household"}</strong><span>{household?.role === "owner" ? "Household owner" : "Household member"}</span></div></div>
     </aside>
     {isOpen && <button className="drawer-scrim" aria-label="Close navigation" onClick={closeMenu} />}
-    <div className="app-main"><header className="top-app-bar"><button className="icon-button menu-button" onClick={() => setIsOpen(true)} aria-label="Open navigation"><span /><span /><span /></button><div className="top-bar-title">{currentPage}</div><UserButton /></header><main className="page-content"><Outlet /></main></div>
+    <div className="app-main"><header className="top-app-bar"><button className="icon-button menu-button" onClick={() => setIsOpen(true)} aria-label="Open navigation"><span /><span /><span /></button><div className="top-bar-title">{currentPage}</div><div className="account-menu"><UserButton /></div></header><main className="page-content"><Outlet /></main></div>
   </div>;
 }
