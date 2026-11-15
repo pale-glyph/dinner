@@ -28,6 +28,11 @@ Do not reference an infrastructure implementation from application or domain cod
 - Keep public contracts explicit and immutable where practical (`record` types are appropriate for transport and result contracts).
 - Use `dotnet format` and build the affected project before handing off changes.
 
+## Validation and local containers
+
+- Agents may run compilation, type checks, linters, format checks, and other non-mutating validation appropriate to the changed code.
+- Agents must not build, start, stop, restart, or otherwise run Docker Compose services. Leave container lifecycle operations to the developer.
+
 ## API and persistence changes
 
 - Preserve existing public endpoint behavior unless the task explicitly requests an API change.
@@ -40,3 +45,4 @@ Do not reference an infrastructure implementation from application or domain cod
 - Put code in the directory that describes its role, such as `components/`, `hooks/`, `lib/`, `types/`, `features/`, or a feature-local equivalent.
 - Keep reusable components and hooks separate from feature-specific code. Co-locate code when it is only used by one feature or route.
 - Import application code through the configured `@/` path aliases (for example, `@/components/...` and `@/hooks/...`) instead of long relative paths.
+- Use Prettier to format frontend code and run its check mode as part of frontend validation when available.

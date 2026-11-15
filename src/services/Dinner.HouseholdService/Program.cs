@@ -83,11 +83,15 @@ static async Task<AccountContext> GetOrCreateAccount(NpgsqlDataSource db, string
         await using var updateAccount = new NpgsqlCommand("UPDATE accounts SET email = $2, display_name = $3, updated_at = now() WHERE id = $1", connection, transaction);
         updateAccount.Parameters.AddWithValue(accountId.Value); updateAccount.Parameters.AddWithValue((object?)email ?? DBNull.Value); updateAccount.Parameters.AddWithValue((object?)displayName ?? DBNull.Value); await updateAccount.ExecuteNonQueryAsync();
     }
-    await using var householdCommand = new NpgsqlCommand("SELECT h.id, h.name, hm.role FROM household_members hm JOIN households h ON h.id = hm.household_id WHERE hm.account_id = $1 ORDER BY CASE hm.role WHEN 'owner' THEN 0 ELSE 1 END, hm.created_at LIMIT 1", connection, transaction);
-    householdCommand.Parameters.AddWithValue(accountId.Value);
-    await using var reader = await householdCommand.ExecuteReaderAsync();
-    await reader.ReadAsync();
-    var result = new AccountContext(accountId.Value, clerkUserId, email, displayName, new HouseholdMembership(reader.GetGuid(0), reader.GetString(1), reader.GetString(2)));
+    AccountContext result;
+    await using (var householdCommand = new NpgsqlCommand("SELECT h.id, h.name, hm.role FROM household_members hm JOIN households h ON h.id = hm.household_id WHERE hm.account_id = $1 ORDER BY CASE hm.role WHEN 'owner' THEN 0 ELSE 1 END, hm.created_at LIMIT 1", connection, transaction))
+    {
+        householdCommand.Parameters.AddWithValue(accountId.Value);
+        await using var reader = await householdCommand.ExecuteReaderAsync();
+        await reader.ReadAsync();
+        result = new AccountContext(accountId.Value, clerkUserId, email, displayName, new HouseholdMembership(reader.GetGuid(0), reader.GetString(1), reader.GetString(2)));
+    }
+
     await transaction.CommitAsync();
     return result;
 }
