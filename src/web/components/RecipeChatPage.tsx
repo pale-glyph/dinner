@@ -3,7 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { agentApi, AgentRun, householdId } from "../lib/api";
+import { agentApi, AgentRun } from "../lib/api";
+import { useHousehold } from "./HouseholdProvider";
 
 const defaultPrompt = "Create a quick vegetarian dinner.";
 
@@ -13,6 +14,7 @@ function titleFor(run: AgentRun) {
 }
 
 export function RecipeChatPage() {
+  const { household, loading } = useHousehold();
   const [threads, setThreads] = useState<AgentRun[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
@@ -22,13 +24,14 @@ export function RecipeChatPage() {
 
   const loadThreads = async () => {
     try {
-      const response = await fetch(`${agentApi}/api/v1/agent/runs?householdId=${householdId}`);
+      if (!household) return;
+      const response = await fetch(`${agentApi}/api/v1/agent/runs?householdId=${household.id}`);
       if (!response.ok) throw new Error();
       const next: AgentRun[] = await response.json();
       setThreads(next); setActiveId(current => current && next.some(thread => thread.id === current) ? current : next[0]?.id ?? null);
     } catch { setStatus("Conversation history is unavailable. Start the local stack and try again."); }
   };
-  useEffect(() => { loadThreads(); }, []);
+  useEffect(() => { loadThreads(); }, [household?.id]);
 
   const refresh = async (run = active) => {
     if (!run) return;
@@ -49,7 +52,8 @@ export function RecipeChatPage() {
     try {
       if (!active) {
         setStatus("Starting conversation…");
-        const response = await fetch(`${agentApi}/api/v1/agent/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ householdId, prompt: message }) });
+        if (!household) throw new Error();
+        const response = await fetch(`${agentApi}/api/v1/agent/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ householdId: household.id, prompt: message }) });
         const next = await response.json().catch(() => null);
         if (!response.ok || !next?.id) throw new Error();
         replace(next); setActiveId(next.id); setPrompt(""); setStatus("The recipe assistant is working. Refresh for new messages.");
@@ -71,6 +75,8 @@ export function RecipeChatPage() {
     } catch { setStatus("Could not delete this conversation."); }
   };
 
+  if (loading) return <p className="status">Loading your household…</p>;
+  if (!household) return <p className="status">Your household could not be loaded.</p>;
   return <section className="conversation-workspace">
     <aside className="conversation-list" aria-label="Recipe conversations">
       <div className="conversation-list-heading"><div><h2>Conversations</h2><p>Recipe planning history</p></div><button onClick={start}>+ New</button></div>

@@ -18,6 +18,19 @@ AI-assisted, low-effort meal planning with recipe management, pantry tracking, n
 
 ## Run locally
 
+### Authentication configuration
+
+Dinner uses Clerk for sign-up and sign-in. The Clerk setup command created a local
+development instance in `src/web/.env.local`; claim it with `npx -y clerk@latest auth login`
+from `src/web` when ready. For Docker, copy the Clerk publishable and secret keys from the
+Clerk dashboard into the root `.env`, along with a long random `DINNER_INTERNAL_API_KEY`.
+The latter is an internal shared credential used only when the authenticated Next.js server
+provisions or reads the application account record.
+
+On first sign-in, Dinner creates an internal `accounts` record keyed by Clerk's immutable user
+ID, a personal household, and an owner row in `household_members`. This keeps household access
+and future invitations under Dinner's control rather than storing that relationship in Clerk.
+
 Start the local stack:
 
 ```bash

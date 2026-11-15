@@ -4,6 +4,10 @@ COPY src/web/package.json src/web/package-lock.json ./
 RUN npm ci
 
 FROM dependencies AS build
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG CLERK_SECRET_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+    CLERK_SECRET_KEY=$CLERK_SECRET_KEY
 COPY src/web/ ./
 RUN npm run build
 
