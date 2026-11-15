@@ -54,6 +54,18 @@ app.MapPost("/api/v1/agent/runs", async (StartRun input, IHttpClientFactory clie
     }
 }).WithTags("Agent runs");
 app.MapGet("/api/v1/agent/runs/{id:guid}", async (Guid id, NpgsqlDataSource db) => runs.TryGetValue(id, out var run) ? Results.Ok(run) : await ReadRun(db, id) is { } stored ? Results.Ok(stored) : Results.NotFound());
+app.MapGet("/api/v1/agent/runs", async (Guid householdId, NpgsqlDataSource db) => householdId == Guid.Empty ? Results.ValidationProblem(new Dictionary<string, string[]> { ["householdId"] = ["householdId is required."] }) : Results.Ok(await ReadRuns(db, householdId)));
+app.MapDelete("/api/v1/agent/runs/{id:guid}", async (Guid id, IHttpClientFactory clients, NpgsqlDataSource db) =>
+{
+    if (!runs.TryGetValue(id, out var run)) { run = await ReadRun(db, id); if (run is null) return Results.NotFound(); }
+    var baseUrl = config["AgentPlatform:BaseUrl"]; var projectId = config["AgentPlatform:ProjectId"];
+    if (run.ThreadId is not null && PlatformUri(baseUrl, out var platformUri) && !string.IsNullOrWhiteSpace(projectId))
+    {
+        var response = await clients.CreateClient("agent-platform").DeleteAsync($"{platformUri.AbsoluteUri.TrimEnd('/')}/api/projects/{projectId}/agent-threads/{run.ThreadId}");
+        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound) return Results.StatusCode(StatusCodes.Status502BadGateway);
+    }
+    runs.TryRemove(id, out _); await DeleteRun(db, id); return Results.NoContent();
+});
 app.MapPost("/api/v1/agent/runs/{id:guid}/messages", async (Guid id, RunMessage input, IHttpClientFactory clients, NpgsqlDataSource db) =>
 {
     if (!runs.TryGetValue(id, out var run)) { run = await ReadRun(db, id); if (run is null) return Results.NotFound(); runs[id] = run; }
@@ -118,6 +130,8 @@ static async Task Migrate(NpgsqlDataSource db) { await using var c = db.CreateCo
 static async Task SaveRun(NpgsqlDataSource db, AgentRun run) { await using var c = db.CreateCommand("INSERT INTO agent_runs (id,household_id,status,thread_id,last_sequence,events,created_at,correlation_id,pending_queued) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status,thread_id=EXCLUDED.thread_id,last_sequence=EXCLUDED.last_sequence,events=EXCLUDED.events,pending_queued=EXCLUDED.pending_queued"); c.Parameters.AddWithValue(run.Id); c.Parameters.AddWithValue(run.HouseholdId); c.Parameters.AddWithValue(run.Status); c.Parameters.AddWithValue((object?)run.ThreadId ?? DBNull.Value); c.Parameters.AddWithValue(run.LastSequence); c.Parameters.AddWithValue(JsonSerializer.Serialize(run.Events)); c.Parameters.AddWithValue(run.CreatedAt); c.Parameters.AddWithValue(run.CorrelationId); c.Parameters.AddWithValue(run.HasPendingQueuedMessage); await c.ExecuteNonQueryAsync(); }
 static async Task<bool> SaveWebhook(NpgsqlDataSource db, string eventId, string payload) { await using var c = db.CreateCommand("INSERT INTO agent_webhook_events (event_id,payload) VALUES ($1,$2) ON CONFLICT DO NOTHING"); c.Parameters.AddWithValue(eventId); c.Parameters.AddWithValue(payload); return await c.ExecuteNonQueryAsync() == 1; }
 static async Task<AgentRun?> ReadRun(NpgsqlDataSource db, Guid id) { await using var c = db.CreateCommand("SELECT id,household_id,status,thread_id,last_sequence,events::text,created_at,correlation_id,pending_queued FROM agent_runs WHERE id=$1"); c.Parameters.AddWithValue(id); await using var r = await c.ExecuteReaderAsync(); return await r.ReadAsync() ? MapRun(r) : null; }
+static async Task<List<AgentRun>> ReadRuns(NpgsqlDataSource db, Guid householdId) { await using var c = db.CreateCommand("SELECT id,household_id,status,thread_id,last_sequence,events::text,created_at,correlation_id,pending_queued FROM agent_runs WHERE household_id=$1 ORDER BY created_at DESC"); c.Parameters.AddWithValue(householdId); await using var r = await c.ExecuteReaderAsync(); var result = new List<AgentRun>(); while (await r.ReadAsync()) result.Add(MapRun(r)); return result; }
+static async Task DeleteRun(NpgsqlDataSource db, Guid id) { await using var c = db.CreateCommand("DELETE FROM agent_runs WHERE id=$1"); c.Parameters.AddWithValue(id); await c.ExecuteNonQueryAsync(); }
 static async Task<AgentRun?> ReadRunByThread(NpgsqlDataSource db, Guid threadId) { await using var c = db.CreateCommand("SELECT id,household_id,status,thread_id,last_sequence,events::text,created_at,correlation_id,pending_queued FROM agent_runs WHERE thread_id=$1"); c.Parameters.AddWithValue(threadId); await using var r = await c.ExecuteReaderAsync(); return await r.ReadAsync() ? MapRun(r) : null; }
 static AgentRun MapRun(NpgsqlDataReader r) => new(r.GetGuid(0), r.GetGuid(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetGuid(3), r.GetInt32(4), JsonSerializer.Deserialize<string[]>(r.GetString(5)) ?? [], r.GetFieldValue<DateTimeOffset>(6), r.GetString(7), r.GetBoolean(8));
 record StartRun(Guid HouseholdId, string Prompt, string? CorrelationId);
