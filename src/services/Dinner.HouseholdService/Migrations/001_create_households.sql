@@ -25,3 +25,14 @@ CREATE TABLE IF NOT EXISTS household_members (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (household_id, account_id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_household_members_one_owner
+  ON household_members(household_id) WHERE role = 'owner';
+
+CREATE TABLE IF NOT EXISTS household_invites (
+  token text PRIMARY KEY,
+  household_id uuid NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  created_by_account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  revoked_at timestamptz NULL
+);
