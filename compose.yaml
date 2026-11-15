@@ -57,6 +57,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ConnectionStrings__Dinner: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Dinner__InternalApiKey: ${DINNER_INTERNAL_API_KEY}
     ports:
       - "${HOUSEHOLD_SERVICE_PORT:-18082}:8080"
     healthcheck: *service_healthcheck
@@ -142,11 +143,18 @@ services:
     build:
       context: .
       dockerfile: src/web/Dockerfile
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+        CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_PANTRY_API_URL: http://localhost:${PANTRY_SERVICE_PORT:-18083}
       NEXT_PUBLIC_RECIPE_API_URL: http://localhost:${RECIPE_SERVICE_PORT:-18084}
       NEXT_PUBLIC_AGENT_GATEWAY_API_URL: http://localhost:${AGENT_GATEWAY_PORT:-18081}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      DINNER_INTERNAL_API_KEY: ${DINNER_INTERNAL_API_KEY}
+      HOUSEHOLD_SERVICE_URL: http://household-service:8080
     ports:
       - "${DINNER_WEB_PORT:-3011}:3000"
     depends_on:
