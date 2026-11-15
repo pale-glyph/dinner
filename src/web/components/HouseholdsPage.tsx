@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useHousehold } from "./HouseholdProvider";
+import { useHousehold } from "@/components/providers/HouseholdProvider";
 
 type Member = { id: string; displayName?: string | null; email?: string | null; role: string };
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useHousehold } from "./HouseholdProvider";
+import { useHousehold } from "@/components/providers/HouseholdProvider";
 
 export function JoinHouseholdPage() {
   const { token } = useParams(); const navigate = useNavigate(); const { refresh } = useHousehold(); const [message, setMessage] = useState("Joining household…");

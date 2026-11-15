@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useHousehold } from "./HouseholdProvider";
+import { useHousehold } from "@/components/providers/HouseholdProvider";
 
 export function HouseholdOnboarding() {
   const { refresh } = useHousehold();
