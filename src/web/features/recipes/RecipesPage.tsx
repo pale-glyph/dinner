@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useHousehold } from "@/components/providers/HouseholdProvider";
-import { ProposalReview } from "@/features/recipes/components/ProposalReview";
 import { RecipeDraftForm } from "@/features/recipes/components/RecipeDraftForm";
 import { RecipeList } from "@/features/recipes/components/RecipeList";
 import { useRecipes } from "@/features/recipes/hooks/useRecipes";
@@ -13,24 +12,16 @@ export function RecipesPage() {
   if (loading) return <p className="status">Loading your household…</p>;
   if (!household)
     return <p className="status">Your household could not be loaded.</p>;
-  const submit = async (recipe: Omit<Recipe, "id" | "revision">) =>
-    recipes.propose({ ...recipe, householdId: household.id }, editing);
-  const approve = async () => {
-    if (await recipes.approve()) setEditing(null);
+  const submit = async (recipe: Omit<Recipe, "id" | "revision">) => {
+    const saved = await recipes.save({ ...recipe, householdId: household.id }, editing);
+    if (saved) setEditing(null);
+    return saved;
   };
   return (
     <>
       <section className="pantry-grid">
         <RecipeDraftForm editing={editing} onSubmit={submit} />
-        <ProposalReview
-          proposal={recipes.proposal}
-          pending={recipes.pending}
-          status={recipes.status}
-          onSelect={recipes.setProposal}
-          onApprove={() => {
-            void approve();
-          }}
-        />
+        <div>{recipes.status && <p className="status">{recipes.status}</p>}</div>
       </section>
       <RecipeList
         recipes={recipes.recipes}

@@ -7,12 +7,11 @@ namespace Dinner.RecipeService.Infrastructure;
 
 public sealed class NpgsqlRecipeRepository(NpgsqlDataSource dataSource) : IRecipeRepository, IRecipeDatabaseInitializer
 {
-    private const string RecipeColumns = "id,household_id,title,description,instructions,total_minutes,servings,tags::text,ingredients::text,revision,source,approval_reference,created_at";
-    private const string ProposalColumns = "id,household_id,kind,recipe_id,expected_revision,payload::text,status,created_at";
+    private const string RecipeColumns = "id,household_id,title,markdown,tags::text,cuisine,dietary_restrictions::text,instruction_steps::text,ingredients::text,revision,source,created_at";
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        await using var command = dataSource.CreateCommand("CREATE TABLE IF NOT EXISTS recipes (id uuid PRIMARY KEY, household_id uuid NOT NULL, title text NOT NULL, description text NULL, instructions text NOT NULL, total_minutes int NOT NULL, servings int NOT NULL, tags jsonb NOT NULL, ingredients jsonb NOT NULL, revision int NOT NULL, source text NOT NULL, approval_reference text NULL, created_at timestamptz NOT NULL, deleted_at timestamptz NULL); CREATE TABLE IF NOT EXISTS recipe_revisions (recipe_id uuid NOT NULL, revision int NOT NULL, payload jsonb NOT NULL, source text NOT NULL, approval_reference text NULL, created_at timestamptz NOT NULL, PRIMARY KEY (recipe_id, revision)); CREATE TABLE IF NOT EXISTS recipe_proposals (id uuid PRIMARY KEY, household_id uuid NOT NULL, kind text NOT NULL, recipe_id uuid NULL, expected_revision int NULL, payload jsonb NULL, status text NOT NULL, approval_reference text NULL, created_at timestamptz NOT NULL); CREATE TABLE IF NOT EXISTS recipe_idempotency (idempotency_key text PRIMARY KEY, recipe_id uuid NOT NULL);");
+        await using var command = dataSource.CreateCommand("CREATE TABLE IF NOT EXISTS recipes (id uuid PRIMARY KEY, household_id uuid NOT NULL, title text NOT NULL, description text NULL, instructions text NOT NULL DEFAULT '', total_minutes int NOT NULL DEFAULT 0, servings int NOT NULL DEFAULT 1, tags jsonb NOT NULL, ingredients jsonb NOT NULL, revision int NOT NULL, source text NOT NULL, approval_reference text NULL, created_at timestamptz NOT NULL, deleted_at timestamptz NULL, markdown text NOT NULL DEFAULT '', cuisine text NULL, dietary_restrictions jsonb NOT NULL DEFAULT '[]'::jsonb, instruction_steps jsonb NOT NULL DEFAULT '[]'::jsonb); CREATE TABLE IF NOT EXISTS recipe_revisions (recipe_id uuid NOT NULL, revision int NOT NULL, payload jsonb NOT NULL, source text NOT NULL, created_at timestamptz NOT NULL, PRIMARY KEY (recipe_id, revision)); ALTER TABLE recipes ADD COLUMN IF NOT EXISTS markdown text NOT NULL DEFAULT ''; ALTER TABLE recipes ADD COLUMN IF NOT EXISTS cuisine text NULL; ALTER TABLE recipes ADD COLUMN IF NOT EXISTS dietary_restrictions jsonb NOT NULL DEFAULT '[]'::jsonb; ALTER TABLE recipes ADD COLUMN IF NOT EXISTS instruction_steps jsonb NOT NULL DEFAULT '[]'::jsonb; UPDATE recipes SET markdown = '# ' || title || E'\\n\\n' || instructions WHERE markdown = ''; UPDATE recipes SET instruction_steps = jsonb_build_array(jsonb_build_object('order', 1, 'instruction', instructions)) WHERE instruction_steps = '[]'::jsonb AND btrim(instructions) <> '';");
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -37,7 +36,7 @@ public sealed class NpgsqlRecipeRepository(NpgsqlDataSource dataSource) : IRecip
 
     public async Task SaveAsync(Recipe recipe, CancellationToken cancellationToken)
     {
-        await using var command = dataSource.CreateCommand("INSERT INTO recipes (id,household_id,title,description,instructions,total_minutes,servings,tags,ingredients,revision,source,approval_reference,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13) ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title,description=EXCLUDED.description,instructions=EXCLUDED.instructions,total_minutes=EXCLUDED.total_minutes,servings=EXCLUDED.servings,tags=EXCLUDED.tags,ingredients=EXCLUDED.ingredients,revision=EXCLUDED.revision,source=EXCLUDED.source,approval_reference=EXCLUDED.approval_reference; INSERT INTO recipe_revisions (recipe_id,revision,payload,source,approval_reference,created_at) VALUES ($1,$10,$14::jsonb,$11,$12,now()) ON CONFLICT DO NOTHING");
+        await using var command = dataSource.CreateCommand("INSERT INTO recipes (id,household_id,title,markdown,description,instructions,total_minutes,servings,tags,cuisine,dietary_restrictions,instruction_steps,ingredients,revision,source,approval_reference,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17) ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title,markdown=EXCLUDED.markdown,description=EXCLUDED.description,instructions=EXCLUDED.instructions,total_minutes=EXCLUDED.total_minutes,servings=EXCLUDED.servings,tags=EXCLUDED.tags,cuisine=EXCLUDED.cuisine,dietary_restrictions=EXCLUDED.dietary_restrictions,instruction_steps=EXCLUDED.instruction_steps,ingredients=EXCLUDED.ingredients,revision=EXCLUDED.revision,source=EXCLUDED.source,approval_reference=EXCLUDED.approval_reference; INSERT INTO recipe_revisions (recipe_id,revision,payload,source,created_at) VALUES ($1,$14,$18::jsonb,$15,now()) ON CONFLICT DO NOTHING");
         AddRecipeParameters(command, recipe);
         command.Parameters.AddWithValue(JsonSerializer.Serialize(recipe));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -50,75 +49,28 @@ public sealed class NpgsqlRecipeRepository(NpgsqlDataSource dataSource) : IRecip
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<RecipeProposal>> ListPendingProposalsAsync(Guid householdId, CancellationToken cancellationToken)
-    {
-        await using var command = dataSource.CreateCommand($"SELECT {ProposalColumns} FROM recipe_proposals WHERE household_id=$1 AND status='Pending' ORDER BY created_at DESC");
-        command.Parameters.AddWithValue(householdId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var proposals = new List<RecipeProposal>();
-        while (await reader.ReadAsync(cancellationToken)) proposals.Add(MapProposal(reader));
-        return proposals;
-    }
-
-    public async Task<RecipeProposal?> GetProposalAsync(Guid proposalId, CancellationToken cancellationToken)
-    {
-        await using var command = dataSource.CreateCommand($"SELECT {ProposalColumns} FROM recipe_proposals WHERE id=$1");
-        command.Parameters.AddWithValue(proposalId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? MapProposal(reader) : null;
-    }
-
-    public async Task SaveProposalAsync(RecipeProposal proposal, CancellationToken cancellationToken)
-    {
-        await using var command = dataSource.CreateCommand("INSERT INTO recipe_proposals (id,household_id,kind,recipe_id,expected_revision,payload,status,created_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)");
-        command.Parameters.AddWithValue(proposal.Id);
-        command.Parameters.AddWithValue(proposal.HouseholdId);
-        command.Parameters.AddWithValue(proposal.Kind);
-        command.Parameters.AddWithValue((object?)proposal.RecipeId ?? DBNull.Value);
-        command.Parameters.AddWithValue((object?)proposal.ExpectedRevision ?? DBNull.Value);
-        command.Parameters.AddWithValue(JsonSerializer.Serialize(proposal.Recipe));
-        command.Parameters.AddWithValue(proposal.Status);
-        command.Parameters.AddWithValue(proposal.CreatedAt);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    public async Task<Guid?> GetIdempotentRecipeIdAsync(string idempotencyKey, CancellationToken cancellationToken)
-    {
-        await using var command = dataSource.CreateCommand("SELECT recipe_id FROM recipe_idempotency WHERE idempotency_key=$1");
-        command.Parameters.AddWithValue(idempotencyKey);
-        return await command.ExecuteScalarAsync(cancellationToken) is Guid recipeId ? recipeId : null;
-    }
-
-    public async Task MarkProposalAppliedAsync(Guid proposalId, string approvalReference, string idempotencyKey, Guid recipeId, CancellationToken cancellationToken)
-    {
-        await using var command = dataSource.CreateCommand("UPDATE recipe_proposals SET status='Applied', approval_reference=$2 WHERE id=$1; INSERT INTO recipe_idempotency (idempotency_key,recipe_id) VALUES ($3,$4)");
-        command.Parameters.AddWithValue(proposalId);
-        command.Parameters.AddWithValue(approvalReference);
-        command.Parameters.AddWithValue(idempotencyKey);
-        command.Parameters.AddWithValue(recipeId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
     private static void AddRecipeParameters(NpgsqlCommand command, Recipe recipe)
     {
         command.Parameters.AddWithValue(recipe.Id);
         command.Parameters.AddWithValue(recipe.HouseholdId);
         command.Parameters.AddWithValue(recipe.Title);
-        command.Parameters.AddWithValue((object?)recipe.Description ?? DBNull.Value);
-        command.Parameters.AddWithValue(recipe.Instructions);
-        command.Parameters.AddWithValue(recipe.TotalMinutes);
-        command.Parameters.AddWithValue(recipe.Servings);
+        command.Parameters.AddWithValue(recipe.Markdown);
+        command.Parameters.AddWithValue(DBNull.Value);
+        command.Parameters.AddWithValue(string.Join("\n", recipe.Instructions.Select(step => step.Instruction)));
+        command.Parameters.AddWithValue(0);
+        command.Parameters.AddWithValue(1);
         command.Parameters.AddWithValue(JsonSerializer.Serialize(recipe.Tags));
+        command.Parameters.AddWithValue((object?)recipe.Cuisine ?? DBNull.Value);
+        command.Parameters.AddWithValue(JsonSerializer.Serialize(recipe.DietaryRestrictions));
+        command.Parameters.AddWithValue(JsonSerializer.Serialize(recipe.Instructions));
         command.Parameters.AddWithValue(JsonSerializer.Serialize(recipe.Ingredients));
         command.Parameters.AddWithValue(recipe.Revision);
         command.Parameters.AddWithValue(recipe.Source);
-        command.Parameters.AddWithValue((object?)recipe.ApprovalReference ?? DBNull.Value);
+        command.Parameters.AddWithValue(DBNull.Value);
         command.Parameters.AddWithValue(recipe.CreatedAt);
     }
 
-    private static Recipe MapRecipe(NpgsqlDataReader reader) => new(reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), JsonSerializer.Deserialize<string[]>(reader.GetString(7)) ?? [], JsonSerializer.Deserialize<RecipeIngredient[]>(reader.GetString(8)) ?? [], reader.GetInt32(9), reader.GetString(10), reader.IsDBNull(11) ? null : reader.GetString(11), reader.GetFieldValue<DateTimeOffset>(12));
-
-    private static RecipeProposal MapProposal(NpgsqlDataReader reader) => new(reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetGuid(3), reader.IsDBNull(4) ? null : reader.GetInt32(4), reader.IsDBNull(5) ? null : JsonSerializer.Deserialize<RecipeDraft>(reader.GetString(5)), reader.GetString(6), reader.GetFieldValue<DateTimeOffset>(7));
+    private static Recipe MapRecipe(NpgsqlDataReader reader) => new(reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetString(3), JsonSerializer.Deserialize<string[]>(reader.GetString(4)) ?? [], reader.IsDBNull(5) ? null : reader.GetString(5), JsonSerializer.Deserialize<string[]>(reader.GetString(6)) ?? [], JsonSerializer.Deserialize<RecipeStep[]>(reader.GetString(7)) ?? [], JsonSerializer.Deserialize<RecipeIngredient[]>(reader.GetString(8)) ?? [], reader.GetInt32(9), reader.GetString(10), reader.GetFieldValue<DateTimeOffset>(11));
 }
 
 public sealed class SystemClock : IClock

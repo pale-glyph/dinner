@@ -31,7 +31,7 @@ flowchart LR
 - A local nutrition-data projection seeded from an Open Food Facts fixture or representative export subset.
 - Nutrition lookup and provenance on supported food products and recipe ingredients.
 - Recipe drafts with structured ingredients, servings, instructions, tags, and source/agent-run attribution.
-- Explicit confirmation before an agent creates, overwrites, or deletes a saved recipe.
+- Agents can create, overwrite, and delete saved recipes directly after domain validation.
 - Agent conversations through the Agent Gateway.
 - HTTP/webhook communication with the in-house agent platform.
 - MCP resources and tools exposed by Dinner domain services.
@@ -49,7 +49,7 @@ flowchart LR
 - Advanced nutrition calculation or medical dietary advice.
 - Full production-scale Open Food Facts ingestion and product-image redistribution.
 - Multi-region deployment and production-scale tenancy.
-- Fully autonomous write actions without confirmation.
+- Autonomous changes to pantry inventory and shopping lists without confirmation.
 
 ## 3. Delivery principles
 
@@ -201,7 +201,7 @@ flowchart TD
     PantryMCP --> Agent[Agent Gateway and platform integration]
     Recipe --> Agent
     Nutrition[Nutrition Data Service] --> Recipe
-    Agent --> Chat[Chat and recipe proposal UX]
+    Agent --> Chat[Chat and recipe workspace]
     Chat --> Recipe
     Recipe --> Meal[Later: meal planning service]
     Preferences --> Meal
@@ -283,7 +283,7 @@ flowchart TD
 - [x] Add recipe MCP resources and typed read/draft/create/update/delete proposal tools.
 - [x] Add read-only nutrition MCP tools.
 - [x] Build assistant chat, draft review, recipe editor, and explicit deletion confirmation UI.
-- [ ] Add an end-to-end test: pantry context → chat-generated recipe → approve → edit → delete.
+- [ ] Add an end-to-end test: pantry context → chat-generated recipe → edit → delete.
 
 ### M3 — Meal planning and shopping loop usable
 
@@ -317,14 +317,14 @@ The agent integration must be developed against a stable test contract even if t
 - Send follow-ups with `Queued` or `Steering` delivery semantics; do not submit a second queued message while one is pending.
 - Receive and verify signed `agent.message` and `agent.tool_call` webhooks using their raw request body, then deduplicate by event ID.
 - Reconcile missed or out-of-order webhook events through the timeline endpoint.
-- Keep recipe approval inside Dinner: after approval, execute the recipe domain command with the approval reference rather than trusting model text as a committed mutation.
+- Keep recipe validation inside Dinner: execute agent recipe commands through the same domain rules as user-authored recipes.
 
 ### Minimum MCP contract
 
 - Capability discovery.
 - Structured input and output schemas.
 - Read resources for household, pantry, recipes, and meal plans.
-- Draft-producing recipe tools separated from approval-gated commit tools.
+- Direct recipe mutation tools protected by domain validation and optimistic concurrency.
 - Error codes that distinguish validation, permission, conflict, and transient failure.
 - Idempotency key support for write operations.
 
@@ -332,12 +332,12 @@ The agent integration must be developed against a stable test contract even if t
 
 | Layer | Coverage |
 | --- | --- |
-| Domain unit tests | Quantities, recipe validation, revisions, constraints, merging, and approval rules |
+| Domain unit tests | Quantities, recipe validation, revisions, constraints, and merging |
 | API tests | Request validation, response schemas, errors, and persistence behavior |
 | MCP contract tests | Capability discovery, schemas, tool authorization context, and idempotency |
 | Integration tests | Service plus PostgreSQL, events, and mock agent platform |
 | Frontend tests | Forms, proposal states, loading/error states, and key interactions |
-| Browser test | Pantry item → agent recipe chat → approval → edit → delete |
+| Browser test | Pantry item → agent recipe chat → edit → delete |
 | Failure tests | Webhook retry, duplicate event, tool timeout, invalid recipe draft, stale revision, and partial failure |
 
 The browser test should use deterministic recipe and agent fixtures so that it validates the product flow without depending on live model output.
@@ -352,7 +352,7 @@ The MVP is accepted when all of the following are true:
 4. The agent can retrieve pantry and preference context through MCP.
 5. The user can use chat to request a recipe and receive a structured draft from the platform agent.
 6. The user can inspect ingredients, assumptions, warnings, and proposed changes before saving.
-7. The user can create, edit, and explicitly confirm deletion of a household recipe; agent-originated writes use a valid approval reference.
+7. The user and agent can create, edit, and delete a household recipe; concurrent updates use revision checks.
 8. Agent runs, timeline entries, tool calls, approvals, and failures are traceable.
 9. Nutrition values expose their serving basis, provenance, and missing-data state.
 10. The MVP does not present Open Food Facts data as medical advice or guaranteed accuracy.
@@ -362,7 +362,7 @@ The MVP is accepted when all of the following are true:
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | Agent platform contract changes | Integration delay | Build against a mock contract and version the adapter |
-| LLM output is inconsistent | Invalid or misleading recipes | Require structured recipe drafts, domain validation, and approval |
+| LLM output is inconsistent | Invalid or misleading recipes | Require structured recipes and domain validation |
 | Agent overwrite/delete request is ambiguous | Loss of a household recipe | Present the identified recipe, changed fields, and explicit confirmation before mutation |
 | Ingredient and unit ambiguity | Incorrect shopping quantities | Start with a small canonical vocabulary and expose assumptions |
 | Nutrition data is incomplete or inconsistent | Misleading meal summaries | Preserve provenance, show coverage, and never convert missing values to zero |

@@ -14,23 +14,24 @@ export type Ingredient = {
   name: string;
   quantity: number;
   unit: string;
+  pantryItemId?: string | null;
   nutritionProductId?: string | null;
   unresolved?: boolean;
 };
 
+export type RecipeStep = { order: number; instruction: string };
+
 export type Recipe = {
   id: string;
   title: string;
-  description?: string;
-  instructions: string;
-  totalMinutes: number;
-  servings: number;
+  markdown: string;
   tags: string[];
+  cuisine?: string | null;
+  dietaryRestrictions: string[];
+  instructions: RecipeStep[];
   ingredients: Ingredient[];
   revision: number;
 };
-
-export type Proposal = { id: string; recipe?: { title: string }; kind: string };
 
 export type AgentRun = {
   id: string;

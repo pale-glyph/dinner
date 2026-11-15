@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Provide household-scoped recipe CRUD, generated-recipe draft validation, and structured ingredient data. The service is the authority that turns an approved agent proposal into a saved recipe.
+Provide household-scoped recipe CRUD with Markdown as the canonical recipe content and structured data for search, planning, and future pantry matching. Agents can save and refine recipes directly.
 
 ## Responsibilities
 
@@ -18,9 +18,9 @@ Provide household-scoped recipe CRUD, generated-recipe draft validation, and str
 
 ## Core entities
 
-- `Recipe`: household ID, title, description, instructions, times, servings, source, and current revision.
-- `RecipeIngredient`: canonical ingredient, quantity, unit, optionality, and preparation note.
-- `RecipeTag`: cuisine, dietary tag, allergen, equipment, and meal type.
+- `Recipe`: household ID, title, canonical Markdown, tags, cuisine, dietary restrictions, ordered steps, source, and current revision.
+- `RecipeIngredient`: name, quantity, unit, optional linked pantry-item ID, nutrition-product ID, and unresolved state.
+- `RecipeStep`: ordered structured instruction alongside the Markdown recipe.
 - `RecipeVersion`: immutable revision and publication status.
 - `RecipeNutritionProjection`: calculated nutrients per serving, source version, and calculation status.
 
@@ -36,7 +36,7 @@ POST   /api/v1/recipes/{recipeId}/scale
 POST   /api/v1/recipes/search
 ```
 
-Create, update, and delete requests include an actor/source (`user` or `agent`) and, for an agent mutation, an approval reference and expected revision. A delete is a soft delete in the MVP so it remains auditable and can be restored during the retention period.
+Create, update, and delete requests are direct. Updates and deletes include the expected revision, including for agent mutations. A delete is a soft delete in the MVP so it remains auditable and can be restored during the retention period.
 
 ## MCP capabilities
 
@@ -49,15 +49,11 @@ Tools:
 
 - `find_recipes`
 - `get_recipe`
-- `scale_recipe`
-- `get_recipe_ingredients`
-- `get_recipe_nutrition`
-- `propose_recipe_create`
-- `propose_recipe_update`
-- `propose_recipe_delete`
-- `apply_approved_recipe_proposal`
+- `create_recipe`
+- `update_recipe`
+- `delete_recipe`
 
-Proposal tools do not mutate recipes. `apply_approved_recipe_proposal` requires a Dinner approval reference, an idempotency key, and an expected revision for updates/deletes. Recipe search results should include structured match reasons so the agent can explain recommendations.
+Recipe tools mutate recipes directly. Recipe search can filter by ingredient, cuisine, dietary restriction, and tag.
 
 ## Events
 
@@ -73,11 +69,10 @@ Proposal tools do not mutate recipes. `apply_approved_recipe_proposal` requires 
 - Allergy tags are safety metadata and must not be inferred solely from an LLM response.
 - Nutrition totals must identify whether they are calculated from structured recipe ingredients, sourced from a product, or unavailable.
 - Imported or user-provided recipe content must retain source attribution.
-- Generated draft content is untrusted until it passes domain validation and the user approves it.
+- Generated content must pass the same domain validation as a user-authored recipe; no approval workflow is required.
 - Updating or deleting a recipe requires its expected current revision; a stale request returns a conflict rather than overwriting another edit.
 
 ## Acceptance criteria
 
 - A user can manually create, update, search, and delete only their household recipes.
-- An agent can generate a structured recipe draft and propose a create, update, or delete without mutating saved data.
-- An approved agent proposal produces one auditable, idempotent recipe command.
+- An agent can create, update, and delete a structured recipe directly.

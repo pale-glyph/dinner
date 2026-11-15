@@ -28,8 +28,7 @@ export function RecipeList({
               <div>
                 <strong>{recipe.title}</strong>
                 <small>
-                  {recipe.servings} servings · {recipe.totalMinutes} min ·
-                  revision {recipe.revision}
+                  {recipe.cuisine ?? "Unspecified cuisine"} · revision {recipe.revision}
                 </small>
               </div>
               <div className="actions">
