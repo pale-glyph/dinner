@@ -4,16 +4,16 @@ import "./styles.css";
 
 export const metadata: Metadata = {
   title: "Dinner",
-  description: "AI-assisted meal planning"
+  description: "AI-assisted meal planning",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <body>
-        <ClerkProvider>
-          {children}
-        </ClerkProvider>
+        <ClerkProvider>{children}</ClerkProvider>
       </body>
     </html>
   );
